@@ -192,10 +192,13 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 **Bottom nav — 4 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components):
 
 1. **Jobs** — a live job feed with a **search bar and filters** (keywords, location, job type, remote only, date posted), then a paste box and the jobs this user has added. Typing in the search box also filters the user's own jobs. Cards show:
-   - Company logo, name, short description
+   - Company logo and name
    - Job title / role
+   - **Match %**
+   - **Skills you have** and **skills missing** (counts)
    - **Apply link** to the original posting
-   - Save toggle
+
+   Clicking anywhere on a card opens the job dialog (below). Saving happens in the dialog; a saved card shows a Saved marker.
 
    Cards show the **match percentage and the met/missing counts** once that job has been analysed. Those figures are read from the cached JobMatch row, so rendering a card is a database join and never an API call — a card simply shows nothing until the user asks for an analysis.
 
@@ -213,7 +216,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 
 ### Job detail view (opened from any card)
 
-Opening a card triggers match analysis if it hasn't been computed for the current resume. It shows:
+Clicking a card opens the full job **in a dialog over a dimmed page**, and triggers match analysis if it has not been computed for the current resume. Only jobs the user actually opens spend an AI request, and the result is cached, so reopening is free. The dialog shows:
 
 1. **Match percentage** — with an honest explanation of what it means. Never presented as an objective probability of getting hired.
 2. **Requirements satisfied** — mapped to evidence in the user's resume where possible.
@@ -222,6 +225,10 @@ Opening a card triggers match analysis if it hasn't been computed for the curren
 5. **Application** — mark the job as applied, move it between stages with a note on what happened, and set the next step. Jobs logged by hand show this panel without match analysis or generation, because they have no advert.
 
 The detail view leads with three figures: the match percentage, how many required skills the candidate **has**, and how many are **missing**.
+
+The dialog also shows the **job description** and has **Save**, **Create resume** and **Create cover letter** buttons alongside the Apply link. It traps keyboard focus, closes on Escape or a click on the dimmed background, returns focus to the card, and becomes a bottom sheet on phones. The full page at `/jobs/:id` remains, for application tracking.
+
+The card owns its dialog, so every page that lists jobs (Jobs, Saved) gets it without changes. Card and dialog styles live in `JobCard.css`, not `styles.css`, because the UI branches rewrite `styles.css`.
 
 ### Apply link (required everywhere a job is shown)
 
