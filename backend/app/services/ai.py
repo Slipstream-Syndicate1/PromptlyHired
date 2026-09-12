@@ -230,6 +230,14 @@ def _generate(label: str, *, system: str, prompt, schema, thinking: str | None =
     return parsed
 
 
+def generate_structured(label: str, *, system: str, prompt: str, schema):
+    """Shared structured provider entry point for feature-specific services."""
+    # Preserve configuration errors for callers mapping them to HTTP 503.
+    if not settings.gemini_api_key:
+        raise AIUnavailable("GEMINI_API_KEY is not configured, so AI features are disabled.")
+    return _generate(label, system=system, prompt=prompt, schema=schema)
+
+
 def ping() -> str:
     """Tiny real call, used by `app.tasks doctor`."""
     response = _client().models.generate_content(

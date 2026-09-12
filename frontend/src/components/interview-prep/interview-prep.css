@@ -1,0 +1,29 @@
+.prep-workspace { max-width: 1200px; margin: 0 auto; }
+.prep-hero { padding: 28px 0; }
+.prep-eyebrow { color: var(--accent); font-size: .75rem; font-weight: 700; letter-spacing: .12em; }
+.prep-hero h1 { font-size: clamp(2rem, 5vw, 3.3rem); line-height: 1.12; margin: 14px 0; }
+.prep-hero p, .prep-setup > p, .prep-chat > p, .prep-callout p { color: var(--muted); }
+.prep-setup { max-width: 640px; }
+.prep-columns { display: grid; gap: 24px; align-items: start; }
+.prep-columns > * { min-width: 0; }
+.prep-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.prep-section-heading span { color: var(--muted); font-size: .85rem; }
+.prep-checklist progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.prep-day { margin-top: 24px; }
+.prep-day h3 { display: flex; justify-content: space-between; gap: 16px; font-size: 1rem; }
+.prep-day h3 span { color: var(--muted); font-weight: 400; white-space: nowrap; }
+.prep-task { border-top: 1px solid var(--border); padding: 18px 0; }
+.prep-task label { display: flex; align-items: start; gap: 12px; cursor: pointer; }
+.prep-task input { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--accent); }
+.prep-task-body { padding-left: 36px; overflow-wrap: anywhere; }
+.prep-task-body p { margin: 10px 0 0; }
+.prep-task.is-complete label strong { text-decoration: line-through; color: var(--muted); }
+.prep-messages { max-height: 450px; overflow-y: auto; overflow-wrap: anywhere; }
+.prep-chat-empty { padding: 22px 12px; color: var(--muted); background: var(--surface-2); border-radius: var(--radius); }
+.prep-message { padding: 14px; margin: 12px 0; background: var(--surface-2); border-radius: var(--radius); }
+.prep-message.from-user { border-left: 3px solid var(--accent); }
+.prep-message p { white-space: pre-wrap; margin: 8px 0 0; }
+.prep-callout { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }
+.prep-callout > div { flex: 1 1 260px; }
+.prep-workspace :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (min-width: 1000px) { .prep-columns { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
