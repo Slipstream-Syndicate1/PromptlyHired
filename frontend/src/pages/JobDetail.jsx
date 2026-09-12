@@ -55,7 +55,7 @@ export default function JobDetail() {
     return (
       <main className="page">
         <div className="alert error">{error}</div>
-        <Link className="btn" to="/">
+        <Link className="btn" to="/jobs">
           ‹ Back to jobs
         </Link>
       </main>

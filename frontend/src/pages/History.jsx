@@ -34,7 +34,7 @@ export default function History() {
             Open a job, generate a resume or cover letter, and it will be kept here so
             you can come back to it.
           </p>
-          <Link className="btn primary" to="/">Browse jobs</Link>
+          <Link className="btn primary" to="/jobs">Browse jobs</Link>
         </div>
       )}
 

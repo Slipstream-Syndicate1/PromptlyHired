@@ -190,7 +190,12 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 
 ## Core UI structure
 
-**Bottom nav — 4 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components):
+**Nav — 6 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components): **Home** (`/`), **Jobs** (`/jobs`), **Saved**, **History**, **Calendar** and **Profile**.
+
+- **Home** is a dashboard: a welcome hero, stats and shortcut cards. A guided onboarding tour (spotlight plus a hand-drawn arrow) runs there the first time a user signs in, and can be replayed from a button next to the light/dark theme toggle.
+- **Calendar** shows application dates. It currently stores events in the browser only, so they do not sync between devices; moving it onto `next_action_date` from `/api/applications` fixes that.
+
+The four core pages:
 
 1. **Jobs** — a live job feed with a **search bar and filters** (keywords, location, job type, remote only, date posted), then a paste box and the jobs this user has added. Typing in the search box also filters the user's own jobs. Cards show:
    - Company logo and name

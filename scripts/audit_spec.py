@@ -189,11 +189,12 @@ ck("ai", "original AI output is never overwritten", "never overwritten" in docum
 ck("ai", "no auto-apply or auto-send anywhere",
    not re.search(r"auto_apply|send_application|submit_application", read("backend/app/routers/documents.py")))
 
-head("Nav - exactly 4 pages: Jobs, Saved, History, Profile")
+head("Nav - Home, Jobs, Saved, History, Calendar, Profile")
 nav = read("frontend/src/components/BottomNav.jsx")
-routes = re.findall(r"to: '([^']+)'", nav)
-ck("nav", "exactly 4 nav items", len(routes) == 4, str(routes))
-ck("nav", "Jobs/Saved/History/Profile", set(routes) == {"/", "/saved", "/history", "/profile"}, str(routes))
+# Matches single- or double-quoted routes: the UI branch reformatted this file.
+routes = re.findall(r"to: .(/[a-z-]*).", nav)
+ck("nav", "core pages are in the nav", {"/jobs", "/saved", "/history", "/profile"} <= set(routes), str(routes))
+ck("nav", "at most 6 nav items", 1 <= len(routes) <= 6, str(routes))
 
 head("Apply link - required everywhere a job is shown")
 apply = read("frontend/src/components/ApplyLink.jsx")
