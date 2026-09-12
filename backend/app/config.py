@@ -39,11 +39,28 @@ class Settings(BaseSettings):
     )
     app_base_url: str = "http://localhost:5173"
 
+    # --- Password reset email ---
+    # With no SMTP host, development prints the reset link to the server log
+    # instead of emailing it. Any SMTP provider works; a Gmail App Password
+    # keeps it free.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "PromptlyHired <no-reply@promptlyhired.app>"
+    password_reset_expire_minutes: int = 30
+
     # --- Job sources ---
-    # There are none. Jobs enter the system only when a user pastes a link to
-    # one, which is why this project costs nothing to run. Every job-board API
-    # worth using is paid, partner-only, or forbids the scraping that would
-    # replace it.
+    # Every source is free. Adzuna needs a free developer key and allows 2,500
+    # calls a month; Himalayas needs no key. Without Adzuna keys the feed runs
+    # on Himalayas alone. See "Where jobs come from" in CLAUDE.md.
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+    # Two-letter market code, used by both sources.
+    job_country: str = "ca"
+    # Identical searches are answered from memory for this long, which is what
+    # keeps Adzuna inside its quota. 0 disables the cache.
+    feed_cache_minutes: int = 180
 
     # --- Gemini (free tier) ---
     # Server-side only; the key never reaches the browser.
@@ -53,6 +70,12 @@ class Settings(BaseSettings):
     # sibling answers immediately. Run `python -m app.tasks doctor` to list what
     # this key can call, and `gemini-flash-lite-latest` is a good fallback.
     gemini_model: str = "gemini-3.8-flash"
+    # Tried in order when a model runs out of quota. Each free-tier model has its
+    # own daily allowance (20 requests on the Flash models), so a chain multiplies
+    # what the free tier can serve. Comma-separated in the environment.
+    gemini_fallback_models: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["gemini-3.6-flash", "gemini-flash-lite-latest"]
+    )
     # Deeper reasoning for document drafting; extraction and scoring do not
     # need it and it costs latency against a low free-tier rate limit.
     gemini_thinking_level: str = "low"
@@ -78,6 +101,38 @@ class Settings(BaseSettings):
     # Shared rate-limit store. Without it the limiter is per-process, so more
     # than one worker or instance multiplies the effective limit.
     redis_url: str = ""
+
+    @property
+    def email_enabled(self) -> bool:
+        # All three, not just the host. Gmail and the other free providers need a
+        # login, and a host on its own would let the app try to send mail that
+        # never arrives - and stop printing reset links in development.
+        return bool(self.smtp_host and self.smtp_user and self.smtp_password)
+
+    @property
+    def adzuna_enabled(self) -> bool:
+        return bool(self.adzuna_app_id and self.adzuna_app_key)
+
+    @field_validator("gemini_fallback_models", mode="before")
+    @classmethod
+    def _split_models(cls, v):
+        items = v.split(",") if isinstance(v, str) else v
+        if not isinstance(items, list):
+            return v
+        return [m.strip() for m in items if isinstance(m, str) and m.strip()]
+
+    @property
+    def gemini_models(self) -> list[str]:
+        """The primary model, then the fallbacks, without repeats."""
+        return list(dict.fromkeys(m for m in (self.gemini_model, *self.gemini_fallback_models) if m))
+
+    @field_validator("job_country", mode="before")
+    @classmethod
+    def _country_code(cls, v):
+        code = str(v or "").strip().lower()
+        if len(code) != 2 or not code.isalpha():
+            raise ValueError("JOB_COUNTRY must be a two-letter country code, e.g. ca")
+        return code
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -167,6 +222,17 @@ class Settings(BaseSettings):
             warnings.append(
                 "GEMINI_API_KEY is unset: resume analysis, match scoring and document "
                 "generation are all disabled. That is the core of the product."
+            )
+        if not self.email_enabled:
+            warnings.append(
+                "SMTP_HOST, SMTP_USER and SMTP_PASSWORD are not all set: forgot-password "
+                "emails cannot be sent, so anyone who "
+                "forgets their password is locked out. Reset links are never logged here."
+            )
+        if not self.adzuna_enabled:
+            warnings.append(
+                "ADZUNA_APP_ID / ADZUNA_APP_KEY are unset: the job feed runs on Himalayas "
+                "alone, which lists remote roles only."
             )
         if not self.redis_url:
             warnings.append(

@@ -41,7 +41,7 @@ export default function SavedJobs() {
         <div className="empty">
           <h2>Nothing saved yet</h2>
           <p>Tap the heart on any listing to shortlist it here.</p>
-          <Link className="btn primary" to="/">Browse jobs</Link>
+          <Link className="btn primary" to="/jobs">Browse jobs</Link>
         </div>
       )}
 

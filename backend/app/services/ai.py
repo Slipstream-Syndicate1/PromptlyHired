@@ -22,8 +22,10 @@ surfaced as retryable rather than swallowed, and every call logs its token use.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import random
+import re
 import time
 from functools import lru_cache
 
@@ -168,8 +170,93 @@ def _log_usage(label: str, response) -> None:
     )
 
 
+# Each free-tier model has its own quota (20 requests a day on the Flash
+# models), so when one is used up the call moves on to the next model in
+# settings.gemini_models. A model that hit its quota is skipped for a while
+# rather than spending a request to be told the same thing again.
+_DAILY_QUOTA_SKIP_SECONDS = 60 * 60
+_MINUTE_QUOTA_SKIP_SECONDS = 60
+# model -> (skip until, on time.monotonic(); whether it was the daily quota)
+_exhausted_until: dict[str, tuple[float, bool]] = {}
+
+_model_used: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "gemini_model_used", default=None
+)
+
+
+def last_model_used() -> str:
+    """The model that answered the most recent call in this request."""
+    return _model_used.get() or settings.gemini_model
+
+
+def _is_quota_error(text: str) -> bool:
+    return "429" in text or "RESOURCE_EXHAUSTED" in text or "quota" in text.lower()
+
+
+def _is_daily_quota(text: str) -> bool:
+    return "PerDay" in text
+
+
+def _skip_seconds(text: str) -> float:
+    if _is_daily_quota(text):
+        return _DAILY_QUOTA_SKIP_SECONDS
+    delay = re.search(r"retryDelay\W*(\d+)", text)
+    return float(delay.group(1)) if delay else _MINUTE_QUOTA_SKIP_SECONDS
+
+
+def _available_models() -> list[str]:
+    now = time.monotonic()
+    return [m for m in settings.gemini_models if _exhausted_until.get(m, (0.0, False))[0] <= now]
+
+
+def _quota_message() -> str:
+    reasons = [_exhausted_until.get(m) for m in settings.gemini_models]
+    if reasons and all(reason is not None and reason[1] for reason in reasons):
+        return "The free AI quota is used up for today. It resets at midnight Pacific time."
+    return "Free-tier quota reached. Wait a minute and try again."
+
+
+def models_to_try() -> list[str]:
+    """Models in the chain not currently known to be out of quota, in order."""
+    return _available_models()
+
+
+def remember_quota_error(model: str, error: Exception) -> bool:
+    """If `error` is a quota error, skip `model` for a while. Returns whether it was one."""
+    text = str(error)
+    if not _is_quota_error(text):
+        return False
+    _exhausted_until[model] = (time.monotonic() + _skip_seconds(text), _is_daily_quota(text))
+    return True
+
+
+def _call_model(model: str, label: str, prompt, config):
+    """One model. Retries only transient overloads; everything else propagates."""
+    for attempt in range(_TRANSIENT_RETRIES + 1):
+        try:
+            return _client().models.generate_content(model=model, contents=prompt, config=config)
+        except Exception as exc:  # noqa: BLE001 - the SDK raises provider types
+            text = str(exc)
+            if _is_transient(text) and not _is_quota_error(text) and attempt < _TRANSIENT_RETRIES:
+                # Jitter so concurrent requests do not retry in lockstep.
+                delay = _BACKOFF_SECONDS[attempt] * (1 + random.random() * 0.25)
+                logger.warning(
+                    "Gemini %s overloaded on %s (attempt %d/%d), retrying in %.1fs",
+                    label, model, attempt + 1, _TRANSIENT_RETRIES, delay,
+                )
+                time.sleep(delay)
+                continue
+            raise
+    raise AIError("The AI service is busy right now. Please try again in a moment.")
+
+
 def _generate(label: str, *, system: str, prompt, schema, thinking: str | None = None):
-    """One structured call. The only provider-specific code in this module."""
+    """One structured call. The only provider-specific code in this module.
+
+    Quota errors and retired models move on to the next model in the chain.
+    A busy model is retried in place instead: moving on after the full backoff
+    would keep one HTTP request waiting over a minute.
+    """
     from google.genai import types
 
     config = types.GenerateContentConfig(
@@ -180,60 +267,59 @@ def _generate(label: str, *, system: str, prompt, schema, thinking: str | None =
     if thinking:
         config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
 
-    last_error: Exception | None = None
-    for attempt in range(_TRANSIENT_RETRIES + 1):
+    models = _available_models()
+    if not models:
+        # Every model is known to be out of quota; do not spend a request on it.
+        raise AIRateLimited(_quota_message())
+
+    hit_quota = False
+    missing: list[str] = []
+    for model in models:
         try:
-            response = _client().models.generate_content(
-                model=settings.gemini_model,
-                contents=prompt,
-                config=config,
-            )
-            break
-        except Exception as exc:  # noqa: BLE001 - the SDK raises provider types
+            response = _call_model(model, label, prompt, config)
+        except AIError:
+            raise
+        except Exception as exc:  # noqa: BLE001
             text = str(exc)
-            if "429" in text or "RESOURCE_EXHAUSTED" in text or "quota" in text.lower():
-                raise AIRateLimited(
-                    "Free-tier quota reached. Wait a minute and try again."
-                ) from exc
-            if "404" in text and "model" in text.lower():
-                raise AIError(
-                    f"Model '{settings.gemini_model}' is not available on this key. "
-                    "Run `python -m app.tasks doctor` to list the models you can use, "
-                    "then set GEMINI_MODEL."
-                ) from exc
-            if _is_transient(text) and attempt < _TRANSIENT_RETRIES:
-                # Jitter so concurrent requests do not retry in lockstep.
-                delay = _BACKOFF_SECONDS[attempt] * (1 + random.random() * 0.25)
+            if remember_quota_error(model, exc):
                 logger.warning(
-                    "Gemini %s overloaded (attempt %d/%d), retrying in %.1fs",
-                    label, attempt + 1, _TRANSIENT_RETRIES, delay,
+                    "Gemini %s: %s quota reached on %s, trying the next model",
+                    label, "daily" if _is_daily_quota(text) else "per-minute", model,
                 )
-                time.sleep(delay)
-                last_error = exc
+                hit_quota = True
                 continue
-            logger.error("Gemini %s failed: %s", label, text[:400])
+            if "404" in text and "model" in text.lower():
+                logger.error("Gemini model %s is not available on this key", model)
+                missing.append(model)
+                continue
+            logger.error("Gemini %s failed on %s: %s", label, model, text[:400])
             if _is_transient(text):
                 raise AIError(
                     "The AI service is busy right now. Please try again in a moment."
                 ) from exc
             raise AIError("The AI service returned an error. Please try again.") from exc
-    else:
-        raise AIError(
-            "The AI service is busy right now. Please try again in a moment."
-        ) from last_error
 
-    _log_usage(label, response)
-    parsed = response.parsed
-    if parsed is None:
-        # A safety block or a malformed response both land here.
-        raise AIError("The AI returned an unreadable response. Please try again.")
-    return parsed
+        _model_used.set(model)
+        _log_usage(label, response)
+        parsed = response.parsed
+        if parsed is None:
+            # A safety block or a malformed response both land here.
+            raise AIError("The AI returned an unreadable response. Please try again.")
+        return parsed
+
+    if hit_quota:
+        raise AIRateLimited(_quota_message())
+    raise AIError(
+        f"None of these models are available on this key: {', '.join(missing)}. "
+        "Run `python -m app.tasks doctor` to list the models you can use, "
+        "then set GEMINI_MODEL and GEMINI_FALLBACK_MODELS."
+    )
 
 
-def ping() -> str:
-    """Tiny real call, used by `app.tasks doctor`."""
+def ping(model: str | None = None) -> str:
+    """Tiny real call to one model, used by `app.tasks doctor`."""
     response = _client().models.generate_content(
-        model=settings.gemini_model,
+        model=model or settings.gemini_model,
         contents="Reply with the single word: ok",
     )
     return (response.text or "").strip()[:40]

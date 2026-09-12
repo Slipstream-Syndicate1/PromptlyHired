@@ -7,6 +7,7 @@ A resume-driven job search and application-document generator. Three core jobs:
 1. Read the user's resume and derive their real skillset.
 2. For any job the user pastes a link to, show how well they actually match it: a percentage, the requirements they satisfy, and the requirements they're missing.
 3. Generate a resume and cover letter tailored to that specific posting, editable in-app before export.
+4. Track every application: its stage, each response from the employer, and every communication with them.
 
 The user still browses, saves, and applies through the original posting. This app does not host or submit applications — it prepares the user for them.
 
@@ -21,12 +22,14 @@ This project was previously a job search + **application status tracker** (Appli
 The pivot **keeps the platform and replaces the domain**. Retained wholesale:
 
 - Auth (bcrypt, short-lived JWTs, rotating hashed refresh tokens, rate limiting)
-- ~~The job-source layer~~ — removed; see "Why there is no job feed" below
+- The job-source layer, rebuilt on free sources; see "Where jobs come from" below
 - File upload pipeline (S3/R2, validation, size caps) — repurposed from avatars to resumes
 - Deployment: Render blueprint, Netlify config, Dockerfile, CI, production config guards, `app.tasks doctor`
 - PWA shell, responsive CSS, auth context, API client with transparent token refresh
 
 Removed in the pivot: application status tracking, funnel analytics, company Follow, email digests, follow-up reminders, web push. If any of those are wanted back, recover them from that commit rather than rewriting.
+
+**Application tracking has since been brought back**, adapted to the paste-a-link model rather than restored verbatim: stages, the status-change history and follow-up flags, plus a communications log the original never had. See "Application tracking" below. Funnel analytics, company Follow, email digests and web push remain removed.
 
 ---
 
@@ -44,20 +47,34 @@ Every model call goes through the backend. The API key never reaches the browser
 
 It also means all generation is metered, logged, and cacheable in one place.
 
-### Why there is no job feed
+### Where jobs come from
 
-**This project must cost nothing to run.** That single constraint removed the feed:
+**This project must cost nothing to run**, so every source is free:
 
-- **JSearch** (which previously supplied listings, wrapping Google for Jobs) is paid beyond a ~200 call/month trial.
-- **Indeed** retired its Publisher API in 2023–24 and closed it to new developers. **LinkedIn's** is partner-only. Neither is obtainable by an individual, at any price.
-- **Scraping** Google Search or the big boards violates their terms and gets IPs blocked. Not an option.
-- The free no-key APIs that do exist (Arbeitnow, RemoteOK, Remotive, Himalayas) skew heavily to remote tech roles. A feed built on them would quietly misrepresent the job market.
+| Source | Access | Rules we follow |
+| --- | --- | --- |
+| **Adzuna** | Free developer key (`ADZUNA_APP_ID`, `ADZUNA_APP_KEY`) | 25 calls a minute, 250 a day, 2,500 a month. Its terms allow publishing its listings. |
+| **Himalayas** | Free, no key | Link back to the Himalayas listing and name Himalayas as the source. Data refreshes daily, so polling faster gains nothing. |
+| **Pasted links** | The user pastes any posting | One page the user explicitly asked for, fetched server-side (see SSRF). |
 
-So jobs enter **one at a time, when the user pastes a link to one they found themselves**. Fetching a single page a user explicitly asked for is a different act from harvesting a board in bulk, and it works with *any* source — LinkedIn, Indeed, a company careers page — which the old feed never did.
+Rejected, and why:
+- **JSearch** is paid beyond a small trial.
+- **Indeed** retired its Publisher API and **LinkedIn**'s is partner-only. Neither is obtainable.
+- **Remotive** forbids displaying its jobs behind a sign-up, which this app requires.
+- **Arbeitnow** is mostly German listings, a poor fit for our users.
+- **Scraping** Google or the big boards violates their terms and gets IPs blocked.
 
-Where a site blocks server-side fetches (LinkedIn and Indeed both do), the user pastes the advert text instead. That path costs no AI quota at all.
+How the feed works:
+- `GET /api/jobs/feed` queries both sources in parallel, merges them newest first, and drops cross-source duplicates by title and employer.
+- **Identical searches are served from a server-side cache** (`FEED_CACHE_MINUTES`, default 180). Adzuna's quota is about 80 calls a day; without the cache a handful of users would exhaust it. The cache is shared between users and holds job ids, so saved state and match scores stay per-user and current.
+- Fetched jobs are stored as ordinary `Job` rows, so saving, match analysis, documents and application tracking all work on them unchanged.
+- A source that fails never takes the feed down. If every source fails, the feed serves matching jobs stored from earlier searches and says so.
+- Without Adzuna keys the feed runs on Himalayas alone. **Remote only** always uses Himalayas alone, since all its listings are remote.
+- Upstream data is untrusted: descriptions arrive as HTML and are reduced to text, only `http(s)` apply links and `https` logos are kept, and source errors never include the request URL, which for Adzuna carries the API key.
 
-**Extraction is cheapest-first**: schema.org JSON-LD, then known description containers, and only then the model. Most pastes cost nothing.
+Adzuna returns truncated description snippets, so match analysis on an Adzuna job works from less text than on a Himalayas or pasted job. The Apply button always opens the full listing.
+
+Pasting still matters for everything the feed does not carry, LinkedIn and Indeed included. Where a site blocks server-side fetches, the user pastes the advert text instead, which costs no AI quota. **Extraction is cheapest-first**: schema.org JSON-LD, then known description containers, and only then the model.
 
 ### Why match scoring is on-demand, not precomputed
 
@@ -87,10 +104,11 @@ The model returns the resume/cover letter as **structured JSON** (sections, bull
   - `client.models.generate_content` with `response_schema` + `response_mime_type` — **structured output on every call**, which is an injection control as much as an ergonomic one.
   - `system_instruction` carries the rules; untrusted advert text never goes there.
   - Free tier is Flash-only and rate limited to single-digit requests per minute. Quota errors surface as a retryable 429, not a generic failure.
+  - **Each free-tier model allows only 20 requests a day.** Calls therefore walk a model chain (`GEMINI_MODEL`, then `GEMINI_FALLBACK_MODELS`, default `gemini-3.6-flash,gemini-flash-lite-latest`): a quota error moves to the next model, and a model out of quota is skipped for a while instead of being asked again. A busy model is retried in place rather than skipped, so one request never waits through every model. Saved results record the model that actually answered, and `app.tasks doctor` pings every model in the chain.
   - Provider choice here is a cost decision. The prompts, schemas and injection defenses are provider-agnostic; only `_generate` in `services/ai.py` is Gemini-specific.
 - **Resume ingestion:** pypdf and python-docx locally (free). Only a scan that yields too little text falls back to the model reading the PDF natively.
 - **Document export:** HTML/CSS template → PDF, server-side.
-- **Job source:** none. The user pastes a link; see "Why there is no job feed".
+- **Job sources:** Adzuna (free developer key) and Himalayas (free, no key), plus any link the user pastes. See "Where jobs come from".
 
 ---
 
@@ -100,7 +118,7 @@ The model returns the resume/cover letter as **structured JSON** (sections, bull
 
 | Thing | How it is free |
 | --- | --- |
-| Job listings | The user pastes a link. No API at all. |
+| Job listings | Adzuna and Himalayas free tiers, cached server-side; plus pasted links |
 | Page fetch + parse | JSON-LD / container parsing, no model call |
 | AI | Gemini free tier |
 | Database, API, frontend | Render + Netlify free tiers |
@@ -111,6 +129,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 1. **Never call the model when parsing would do.** JSON-LD first, always.
 2. **Persist every AI result.** Recomputation is only ever user-initiated.
 3. **Surface 429s honestly** as "wait a minute and retry", not as a generic failure.
+4. **Never let traffic multiply job-source calls.** Identical feed searches are served from a server-side cache.
 
 ## Data model
 
@@ -134,7 +153,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 - id, company_id (FK), title, location, salary_range, url, posted_date, description, source_api, external_id, source_publisher
 - `url` is the **direct apply link** to the original posting. It is load-bearing: the app never hosts applications, so this is the only route the user has to actually apply. A listing with no usable apply link is close to worthless.
 - `source_publisher` names the destination on the button ("Apply on LinkedIn") rather than sending the user to an unlabelled site.
-- `source_api` is `pasted`; `external_id` is a SHA-256 of the URL (or of the text when there is no URL), so re-pasting the same job reuses the row instead of duplicating it.
+- `source_api` is `adzuna`, `himalayas` or `pasted`. Feed jobs keep the source's own id as `external_id`, so refetching updates the row. Pasted jobs use a SHA-256 of the URL (or of the text when there is no URL), so re-pasting the same job reuses the row instead of duplicating it.
 
 **JobMatch** (AI-derived, computed on card open, cached)
 - id, user_id (FK), job_id (FK), resume_id (FK), match_percentage (0-100), requirements_met (list), requirements_missing (list), rationale, generated_at, model_used
@@ -151,19 +170,41 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 - id, user_id (FK), job_id (FK), resume_id (FK), kind (`resume` | `cover_letter`), content (structured JSON), edited_content (structured JSON, nullable), created_at, updated_at, model_used
 - `content` is the original AI output, never overwritten. `edited_content` holds the user's revisions. Keeping both means "reset to generated" always works and makes it auditable what the AI actually wrote versus what the user changed.
 
+**Application** (a job the user has actually applied to)
+- id, user_id (FK), job_id (FK), resume_id (FK, nullable), status, applied_date, status_updated_at, notes, next_action, next_action_date, created_at, updated_at
+- `status`: `applied` → `online_assessment` → `interview` → `offer` | `rejected` | `withdrawn`.
+- Unique on (user_id, job_id). A job already in the app is tracked by `job_id`. One applied to elsewhere is a **manual entry**, which creates a Job with `source_api = "manual"` and no description.
+- `resume_id` records which CV was sent. It is `SET NULL` on delete, never `CASCADE`: removing an old CV must not erase the record that you applied.
+- `next_action` / `next_action_date` drive follow-up reminders and give the calendar server-side dates instead of localStorage.
+
+**ApplicationEvent** (one per status change)
+- id, application_id (FK), from_status (null only for the event that created the application), to_status, changed_at, note
+- Application holds only the current status. This history is how employer responses (interview invitations, rejections, offers) are monitored over time. `note` says what caused the change, e.g. "Invited to interview by email".
+
+**Communication** (a logged exchange with the employer)
+- id, application_id (FK), kind (`email` | `call` | `meeting` | `message` | `other`), direction (`received` | `sent`), occurred_at, contact_name, subject, summary, created_at
+
 **History** is not a table — it is the query "jobs this user has generated documents for", derived from `GeneratedDocument`.
 
 ---
 
 ## Core UI structure
 
-**Bottom nav — 4 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components):
+**Nav — 6 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components): **Home** (`/`), **Jobs** (`/jobs`), **Saved**, **History**, **Calendar** and **Profile**.
 
-1. **Jobs** — a paste box plus the jobs this user has added. Cards show:
-   - Company logo, name, short description
+- **Home** is a dashboard: a welcome hero, stats and shortcut cards. A guided onboarding tour (spotlight plus a hand-drawn arrow) runs there the first time a user signs in, and can be replayed from a button next to the light/dark theme toggle.
+- **Calendar** shows application dates. It currently stores events in the browser only, so they do not sync between devices; moving it onto `next_action_date` from `/api/applications` fixes that.
+
+The four core pages:
+
+1. **Jobs** — a live job feed with a **search bar and filters** (keywords, location, job type, remote only, date posted), then a paste box and the jobs this user has added. Typing in the search box also filters the user's own jobs. Cards show:
+   - Company logo and name
    - Job title / role
+   - **Match %**
+   - **Skills you have** and **skills missing** (counts)
    - **Apply link** to the original posting
-   - Save toggle
+
+   Clicking anywhere on a card opens the job dialog (below). Saving happens in the dialog; a saved card shows a Saved marker.
 
    Cards show the **match percentage and the met/missing counts** once that job has been analysed. Those figures are read from the cached JobMatch row, so rendering a card is a database join and never an API call — a card simply shows nothing until the user asks for an analysis.
 
@@ -171,22 +212,29 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 
    Two ways in: **paste a link** (fetched and parsed server-side) or **paste the text** (for sites that block fetches, and it costs no AI quota).
 
+   A **Log an application** card records one sent somewhere the app never saw. Only company and position are required.
+
 2. **Saved** — jobs the user has shortlisted. Same card, same actions.
 
-3. **History** — every job the user has generated a resume or cover letter for, most recent first, linking back to the documents. This is the record of work done, replacing the old application tracker.
+3. **History** — the record of work done: tracked applications grouped by stage with their responses, alongside every job the user has generated a resume or cover letter for, linking back to the documents.
 
 4. **Profile** — name, email, profile picture, **resume upload**, and the editable SkillProfile derived from it. Account settings.
 
 ### Job detail view (opened from any card)
 
-Opening a card triggers match analysis if it hasn't been computed for the current resume. It shows:
+Clicking a card opens the full job **in a dialog over a dimmed page**, and triggers match analysis if it has not been computed for the current resume. Only jobs the user actually opens spend an AI request, and the result is cached, so reopening is free. The dialog shows:
 
 1. **Match percentage** — with an honest explanation of what it means. Never presented as an objective probability of getting hired.
 2. **Requirements satisfied** — mapped to evidence in the user's resume where possible.
 3. **Requirements missing** — the gaps, stated plainly.
 4. **Generate** actions for a tailored **Resume** and **Cover Letter**.
+5. **Application** — mark the job as applied, move it between stages with a note on what happened, and set the next step. Jobs logged by hand show this panel without match analysis or generation, because they have no advert.
 
 The detail view leads with three figures: the match percentage, how many required skills the candidate **has**, and how many are **missing**.
+
+The dialog also shows the **job description** and has **Save**, **Create resume** and **Create cover letter** buttons alongside the Apply link. It traps keyboard focus, closes on Escape or a click on the dimmed background, returns focus to the card, and becomes a bottom sheet on phones. The full page at `/jobs/:id` remains, for application tracking.
+
+The card owns its dialog, so every page that lists jobs (Jobs, Saved) gets it without changes. Card and dialog styles live in `JobCard.css`, not `styles.css`, because the UI branches rewrite `styles.css`.
 
 ### Apply link (required everywhere a job is shown)
 
@@ -201,6 +249,34 @@ Every job card carries a clear outbound link to the original posting. Requiremen
 ### Document editor
 
 Generated documents open in a structured editor — fields and bullet lists, not a freeform textarea. The user revises, then exports to PDF. Both the AI original and the edited version are retained.
+
+---
+
+## Application tracking
+
+A shared foundation: the tables and API are built once, and History, the Dashboard, the Calendar and the communications log all read from them rather than keeping their own copies.
+
+### API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/applications?status=` | List, most recently changed first, optionally one stage |
+| POST | `/api/applications` | Track one: `{job_id}`, or manual `{company, position, url?}` |
+| GET | `/api/applications/stats` | Per-stage counts, active, offers, needs_follow_up, response_rate_pct |
+| GET / PATCH / DELETE | `/api/applications/{id}` | Read, update, stop tracking |
+| GET | `/api/applications/{id}/events` | Status-change history, oldest first |
+| GET / POST | `/api/applications/{id}/communications` | Communications log, newest first |
+| PATCH / DELETE | `/api/communications/{id}` | Edit or remove one logged communication |
+
+The frontend calls these through `api.*` in `frontend/src/api/client.js`. Stage and communication labels come from `frontend/src/lib/applicationStatus.js`, so every page names them the same way.
+
+### Rules
+
+- **Only a status change writes an event.** A `note` without a status change is rejected (422) with a pointer to communications, so the event history stays a pure record of transitions.
+- **Follow-up.** An application in an open stage (applied, online assessment, interview) needs following up once its `next_action_date` has passed, or, with none set, after 14 days without a status change. Closed stages never do.
+- **Response rate** excludes withdrawn applications, and is null rather than 0% when there is nothing to divide by.
+- **Privacy.** Another user's application or communication is a 404, never a 403, so its existence is not confirmed.
+- **No quota spent on hand-logged jobs.** They have no advert, so match analysis and document generation refuse (422) before calling the model.
 
 ---
 
@@ -245,6 +321,13 @@ Every one of these returns schema-validated structured output. Scores are clampe
 - Multiple template choices
 - Diff view: generated vs edited
 
+**Phase 5 — Application tracking (team build)**
+- Tables, API, job-detail panel and manual entry *(Abdul)*
+- History grouped by stage; response monitoring *(Sheldon)*
+- Communications log UI *(James)*
+- Dashboard cards and Calendar reading from `/api/applications` *(Dhairya, Rehaan)*
+- Follow-up email notifications *(lowest priority)*
+
 ---
 
 ## Security
@@ -279,6 +362,7 @@ The server makes an outbound request to a URL the user controls. Unchecked, `htt
 ### Application security (carried forward, all still required)
 
 - Password hashing via bcrypt — never plaintext, never a hand-rolled scheme.
+- **Forgot password** uses single-use reset links that expire after 30 minutes and are stored only as SHA-256 hashes. The request endpoint answers identically whether or not the email exists, and sends the email after responding so timing cannot reveal it either. A reset signs out every session. Production never writes a reset link to the logs; without SMTP configured it cannot send one at all, which `production_warnings` reports.
 - JWT with short expiry + rotating refresh tokens stored only as hashes.
 - Parameterized queries / SQLAlchemy ORM only — no string-interpolated SQL.
 - Pydantic validation on every endpoint; reject malformed data at the API boundary.
@@ -287,12 +371,13 @@ The server makes an outbound request to a URL the user controls. Unchecked, `htt
 - HTTPS everywhere.
 - Sanitize user-generated text rendered back in the UI to prevent stored XSS.
 - Uploaded files are validated and re-encoded/parsed server-side; the declared content type is a first filter, not the security boundary.
+- User-supplied links (manual application entries) are limited to http(s). They are rendered as an `href`, where a `javascript:` URL would run on click.
 
 ---
 
 ## Open decisions
 
-- **App name.** JobTrail is a placeholder and now describes the product poorly — it no longer tracks anything.
+- **App name.** The user-facing name is **PromptlyHired**. Infrastructure identifiers (the Render service and database, local Postgres, localStorage keys) keep `jobtrail`, because renaming them breaks live deployments and signed-in sessions for no visible gain.
 - **PDF export renderer.** HTML/CSS → PDF gives by far the best-looking "market standard" templates, but WeasyPrint needs system libraries (cairo, pango) that Render's plain Python runtime can't install. Recommendation: **switch the Render service to the existing Dockerfile**, which already works and makes system dependencies a solved problem. The alternative is a pure-Python renderer (ReportLab/fpdf2) with no system deps but much more manual template work.
 - **Rate-limit headroom.** The Gemini free tier is single-digit requests per minute. Several people using this at once will hit 429s; a queue or per-user quota would be needed before sharing it widely.
 - **Resume formats.** PDF, DOCX and plain text are all supported.

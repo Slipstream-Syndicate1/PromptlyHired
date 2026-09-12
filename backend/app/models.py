@@ -38,6 +38,34 @@ class DocumentKind(str, enum.Enum):
     cover_letter = "cover_letter"
 
 
+class ApplicationStatus(str, enum.Enum):
+    """Where an application stands. Ordered roughly by how far it progressed.
+
+    A job only becomes an Application once actually applied to - shortlisting
+    before that is SavedJob.
+    """
+
+    applied = "applied"
+    online_assessment = "online_assessment"
+    interview = "interview"
+    offer = "offer"
+    rejected = "rejected"
+    withdrawn = "withdrawn"
+
+
+class CommunicationKind(str, enum.Enum):
+    email = "email"
+    call = "call"
+    meeting = "meeting"
+    message = "message"
+    other = "other"
+
+
+class CommunicationDirection(str, enum.Enum):
+    received = "received"
+    sent = "sent"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -288,6 +316,121 @@ class GeneratedDocument(Base):
     resume: Mapped[Resume] = relationship()
 
 
+class Application(Base):
+    """A job the user has actually applied to, and where it stands now.
+
+    Only the current status lives here. The path it took - and so every
+    response from the employer - is in ApplicationEvent.
+    """
+
+    __tablename__ = "applications"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_application_user_job"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # Which CV was sent. SET NULL, not CASCADE: deleting an old resume must not
+    # erase the record that you applied.
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.id", ondelete="SET NULL"), index=True
+    )
+    status: Mapped[ApplicationStatus] = mapped_column(
+        Enum(ApplicationStatus, name="application_status"),
+        default=ApplicationStatus.applied,
+        index=True,
+        nullable=False,
+    )
+    applied_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    # The next thing to do and when - drives follow-up reminders and lets the
+    # calendar show application dates from the server instead of localStorage.
+    next_action: Mapped[str | None] = mapped_column(String(255))
+    next_action_date: Mapped[date | None] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=utcnow, nullable=False
+    )
+
+    job: Mapped[Job] = relationship()
+    resume: Mapped[Resume | None] = relationship()
+    events: Mapped[list[ApplicationEvent]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationEvent.changed_at",
+    )
+    communications: Mapped[list[Communication]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="Communication.occurred_at.desc()",
+    )
+
+
+class ApplicationEvent(Base):
+    """One status change: the history of an application.
+
+    Application holds only the current status, which cannot answer "when did
+    they invite me to interview" or "how long until I heard back". Recording
+    each transition is what makes response tracking real.
+    """
+
+    __tablename__ = "application_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # Null only for the event that created the application.
+    from_status: Mapped[ApplicationStatus | None] = mapped_column(
+        Enum(ApplicationStatus, name="application_status")
+    )
+    to_status: Mapped[ApplicationStatus] = mapped_column(
+        Enum(ApplicationStatus, name="application_status"), nullable=False
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True, nullable=False
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+
+    application: Mapped[Application] = relationship(back_populates="events")
+
+
+class Communication(Base):
+    """A logged exchange with an employer about one application."""
+
+    __tablename__ = "communications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    kind: Mapped[CommunicationKind] = mapped_column(
+        Enum(CommunicationKind, name="communication_kind"), nullable=False
+    )
+    direction: Mapped[CommunicationDirection] = mapped_column(
+        Enum(CommunicationDirection, name="communication_direction"), nullable=False
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    subject: Mapped[str | None] = mapped_column(String(300))
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    application: Mapped[Application] = relationship(back_populates="communications")
+
+
 class RefreshToken(Base):
     """Hashed, rotating refresh tokens - lets a session be revoked server-side."""
 
@@ -300,6 +443,28 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PasswordResetToken(Base):
+    """A one-time password reset link.
+
+    Stored only as a SHA-256 hash, like refresh tokens, so a database leak
+    cannot be used to reset anyone's password. Single use and short-lived.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Set when the link is used, or when a newer link replaces it.
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

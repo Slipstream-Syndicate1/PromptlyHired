@@ -10,6 +10,7 @@ from app.config import settings
 from app.deps import CurrentUser, DbSession
 from app.models import DocumentKind, GeneratedDocument, Job, JobMatch
 from app.rate_limit import ai_rate_limit
+from app.routers.jobs import require_description
 from app.routers.resumes import require_active_resume
 from app.schemas import (
     DocumentGenerateRequest,
@@ -44,6 +45,7 @@ def generate_document(
     job = db.scalar(select(Job).options(selectinload(Job.company)).where(Job.id == job_id))
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    require_description(job)
 
     resume = require_active_resume(db, user)
     match = db.scalar(
@@ -79,7 +81,7 @@ def generate_document(
         resume_id=resume.id,
         kind=payload.kind,
         content=result.model_dump(),
-        model_used=settings.gemini_model,
+        model_used=ai.last_model_used(),
     )
     db.add(document)
     db.commit()

@@ -1,0 +1,304 @@
+/* Job card and job dialog.
+
+   Kept out of styles.css, which the UI branches rewrite. Only uses theme
+   variables that exist in both the current theme and the redesigned one, with
+   fallbacks where the redesign adds a variable the current theme lacks. */
+
+/* --- Card ---------------------------------------------------------------- */
+
+.jc-card {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.jc-card:hover,
+.jc-card:focus-within {
+  border-color: var(--accent);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .jc-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--surface-shadow, 0 12px 30px rgba(0, 0, 0, 0.25));
+  }
+}
+
+.jc-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.jc-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.jc-company {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.jc-title {
+  margin: 2px 0 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+/* The title is the keyboard way in; the whole card is the pointer way in. */
+.jc-open {
+  all: unset;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.jc-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.jc-logo {
+  flex: none;
+  border-radius: 10px;
+  object-fit: contain;
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border);
+}
+
+.jc-logo-md {
+  width: 44px;
+  height: 44px;
+}
+
+.jc-logo-lg {
+  width: 56px;
+  height: 56px;
+}
+
+.jc-logo-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.jc-score {
+  flex: none;
+  min-width: 64px;
+  text-align: right;
+}
+
+.jc-score-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.jc-score-label {
+  display: block;
+  max-width: 88px;
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.jc-score[data-band='strong'] .jc-score-value {
+  color: var(--good);
+}
+
+.jc-score[data-band='partial'] .jc-score-value {
+  color: var(--warn);
+}
+
+.jc-score[data-band='weak'] .jc-score-value {
+  color: var(--critical);
+}
+
+.jc-skills {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.jc-skills > div {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+}
+
+.jc-skills dt {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.jc-skills dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Colour is never the only signal: each value also carries a ✓ or △. */
+.jc-skills dd[data-tone='met'] {
+  color: var(--good);
+}
+
+.jc-skills dd[data-tone='missing'] {
+  color: var(--warn);
+}
+
+.jc-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* --- Dialog -------------------------------------------------------------- */
+
+.jm-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 8, 18, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.jm-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(88vh, 900px);
+  overflow: hidden;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .jm-scrim {
+    animation: jm-fade 0.15s ease-out;
+  }
+
+  .jm-dialog {
+    animation: jm-rise 0.2s ease-out;
+  }
+}
+
+@keyframes jm-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes jm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+.jm-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.jm-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.jm-title {
+  margin: 2px 0 8px;
+  font-size: 20px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.jm-close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.jm-close:hover {
+  border-color: var(--accent);
+}
+
+.jm-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.jm-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 20px;
+}
+
+.jm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* The dialog body already scrolls; a second scroll box inside it is awkward. */
+.jm-description {
+  max-height: none;
+}
+
+.jm-analysing {
+  color: var(--muted);
+}
+
+/* Phones: a bottom sheet rather than a floating box. */
+@media (max-width: 640px) {
+  .jm-scrim {
+    place-items: end stretch;
+    padding: 0;
+  }
+
+  .jm-dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .jm-actions > * {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
+  }
+}

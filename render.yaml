@@ -55,3 +55,23 @@ services:
         sync: false
       - key: S3_PUBLIC_BASE_URL
         sync: false
+      # Password reset emails. Without these, production cannot send reset
+      # links at all - they are never written to the logs there.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # Job feed. Adzuna keys are free (developer.adzuna.com); without them the
+      # feed runs on Himalayas alone, which lists remote roles only.
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: JOB_COUNTRY
+        value: ca

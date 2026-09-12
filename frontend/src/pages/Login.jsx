@@ -1,31 +1,33 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext.jsx'
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 
 export default function Login() {
-  const { login } = useAuth()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const submit = async (event) => {
-    event.preventDefault()
-    setBusy(true)
-    setError('')
+    event.preventDefault();
+    setBusy(true);
+    setError("");
     try {
-      await login(email, password)
+      await login(email, password);
     } catch (err) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   return (
     <div className="auth">
       <form className="auth-card" onSubmit={submit}>
-        <h1>PromptlyHired</h1>
+        <BrandLogo />
+        <h1>Welcome back</h1>
         <p className="sub">Tailor your resume to any job in minutes.</p>
 
         {error && <div className="alert error">{error}</div>}
@@ -52,8 +54,12 @@ export default function Login() {
           />
         </label>
 
+        <p className="fine-print" style={{ marginTop: -4, textAlign: 'right' }}>
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
+
         <button className="btn primary block" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? "Signing in…" : "Sign in"}
         </button>
 
         <p className="sub" style={{ marginTop: 16, marginBottom: 0 }}>
@@ -61,5 +67,5 @@ export default function Login() {
         </p>
       </form>
     </div>
-  )
+  );
 }

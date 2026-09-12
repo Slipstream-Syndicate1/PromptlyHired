@@ -160,9 +160,18 @@ export const api = {
     return done
   },
   me: () => request('/api/auth/me'),
+  // Resolves the same way whether or not the email is registered.
+  forgotPassword: (email) =>
+    request('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  // Returns a token pair: a successful reset also signs you in.
+  resetPassword: (token, password) =>
+    request('/api/auth/reset-password', { method: 'POST', body: { token, password } }),
 
   // --- Jobs (added by pasting a link; there is no feed) ---
   listJobs: () => request('/api/jobs'),
+  // Live jobs from Adzuna and Himalayas. params: { q, location, job_type,
+  // remote_only, posted_within_days, page }. Blank values are left out.
+  jobFeed: (params = {}) => request(`/api/jobs/feed${qs(params)}`),
   addJobFromUrl: (url) => request('/api/jobs/from-url', { method: 'POST', body: { url } }),
   addJobFromText: (payload) =>
     request('/api/jobs/from-text', { method: 'POST', body: payload }),
@@ -192,6 +201,38 @@ export const api = {
   resetDocument: (id) => request(`/api/documents/${id}/reset`, { method: 'POST' }),
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
   history: () => request('/api/history'),
+
+  // --- Applications: tracking, response history, communications log ---
+  // status is optional: applied | online_assessment | interview | offer | rejected | withdrawn
+  listApplications: (status) => request(`/api/applications${qs({ status })}`),
+  // Counts per stage, active, offers, needs_follow_up, response_rate_pct.
+  applicationStats: () => request('/api/applications/stats'),
+  getApplication: (id) => request(`/api/applications/${id}`),
+  // Either { job_id } for a job already in the app, or { company, position, url }
+  // for one applied to elsewhere. Also accepts status, applied_date, notes,
+  // next_action, next_action_date and resume_id.
+  createApplication: (payload) =>
+    request('/api/applications', { method: 'POST', body: payload }),
+  // A status change is recorded as an event. Send { status, note } to say why,
+  // e.g. { status: 'interview', note: 'Invited by email' }.
+  updateApplication: (id, payload) =>
+    request(`/api/applications/${id}`, { method: 'PATCH', body: payload }),
+  deleteApplication: (id) => request(`/api/applications/${id}`, { method: 'DELETE' }),
+  // Oldest first: every status change with its note.
+  applicationEvents: (id) => request(`/api/applications/${id}/events`),
+
+  // Newest first. payload: { kind, direction, occurred_at, contact_name, subject, summary }
+  // kind: email | call | meeting | message | other; direction: received | sent
+  listCommunications: (applicationId) =>
+    request(`/api/applications/${applicationId}/communications`),
+  addCommunication: (applicationId, payload) =>
+    request(`/api/applications/${applicationId}/communications`, {
+      method: 'POST',
+      body: payload,
+    }),
+  updateCommunication: (id, payload) =>
+    request(`/api/communications/${id}`, { method: 'PATCH', body: payload }),
+  deleteCommunication: (id) => request(`/api/communications/${id}`, { method: 'DELETE' }),
 
   // --- Profile ---
   getProfile: () => request('/api/profile'),

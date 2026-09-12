@@ -58,13 +58,94 @@ for cls, fields in FIELDS.items():
         ck("model", f"{cls}.{f}", f"{f}:" in body)
 
 head("Removed tracker domain stays removed")
-for gone in ["ApplicationStatus", "ApplicationEvent", "class Follow(", "NotifiedJob",
-             "PushSubscription", "JobPreferences"]:
+# Application tracking was brought back (see "Application tracking" below).
+# The rest of the old tracker domain stays gone.
+for gone in ["class Follow(", "NotifiedJob", "PushSubscription", "JobPreferences"]:
     ck("removed", f"no {gone.rstrip('(')}", gone not in models)
 for path in ["backend/app/services/notifications.py", "backend/app/services/push.py",
              "backend/app/services/reminders.py", "backend/app/services/analytics.py",
              "frontend/src/pages/Applications.jsx", "frontend/src/pages/Analytics.jsx"]:
     ck("removed", f"{path} deleted", not (ROOT / path).exists())
+
+head("Application tracking")
+TRACKING_FIELDS = {
+    "Application": ["user_id", "job_id", "resume_id", "status", "applied_date",
+                    "status_updated_at", "notes", "next_action", "next_action_date"],
+    "ApplicationEvent": ["application_id", "from_status", "to_status", "changed_at", "note"],
+    "Communication": ["application_id", "kind", "direction", "occurred_at",
+                      "contact_name", "subject", "summary"],
+}
+for cls, fields in TRACKING_FIELDS.items():
+    m = re.search(rf"class {cls}\(Base\):(.*?)(?=\nclass |\Z)", models, re.S)
+    body = m.group(1) if m else ""
+    ck("tracking", f"{cls} exists", bool(m))
+    for f in fields:
+        ck("tracking", f"{cls}.{f}", f"{f}:" in body)
+ck("tracking", "stages include applied, interview, offer, rejected",
+   all(f'{stage} = "{stage}"' in models for stage in ("applied", "interview", "offer", "rejected")))
+ck("tracking", "deleting a CV keeps the application",
+   'ForeignKey("resumes.id", ondelete="SET NULL")' in models)
+
+apps_router = read("backend/app/routers/applications.py")
+for route in ('prefix="/api/applications"', 'prefix="/api/communications"', '"/stats"',
+              '"/{application_id}/events"', '"/{application_id}/communications"'):
+    ck("tracking", f"route {route}", route in apps_router)
+ck("tracking", "scoped to the signed-in user", "Application.user_id == user.id" in apps_router)
+ck("tracking", "status changes recorded as events", "ApplicationEvent(from_status=" in apps_router)
+ck("tracking", "follow-ups flagged", "needs_follow_up" in apps_router)
+main_py = read("backend/app/main.py")
+ck("tracking", "routers registered",
+   "applications.router" in main_py and "applications.communications_router" in main_py)
+
+ck("tracking", "manual links must be http(s)", "_http_url" in read("backend/app/schemas.py"))
+ck("tracking", "no model call for a job with no advert",
+   "require_description(job)" in read("backend/app/routers/jobs.py")
+   and "require_description(job)" in read("backend/app/routers/documents.py"))
+
+client_js = read("frontend/src/api/client.js")
+for fn in ("listApplications", "applicationStats", "createApplication", "updateApplication",
+           "applicationEvents", "listCommunications", "addCommunication"):
+    ck("tracking", f"api.{fn}", f"{fn}:" in client_js)
+for path in ("frontend/src/components/ApplicationPanel.jsx",
+             "frontend/src/components/LogApplication.jsx",
+             "frontend/src/lib/applicationStatus.js",
+             "backend/tests/test_applications.py"):
+    ck("tracking", f"{path} exists", (ROOT / path).exists())
+head("Forgot password")
+auth_router = read("backend/app/routers/auth.py")
+ck("reset", "forgot-password endpoint", '"/forgot-password"' in auth_router)
+ck("reset", "reset-password endpoint", '"/reset-password"' in auth_router)
+ck("reset", "both rate limited",
+   "forgot_password_rate_limit" in auth_router and "reset_password_rate_limit" in auth_router)
+ck("reset", "reset signs out every session", "RefreshToken.user_id == user.id" in auth_router)
+ck("reset", "email sent after the response", "background.add_task" in auth_router)
+ck("reset", "only token hashes stored",
+   "class PasswordResetToken(" in models and "token_hash" in models)
+ck("reset", "production never logs the link", "is_production" in read("backend/app/services/email.py"))
+ck("reset", "reset pages exist", all((ROOT / f).exists() for f in (
+    "frontend/src/pages/ForgotPassword.jsx", "frontend/src/pages/ResetPassword.jsx")))
+ck("reset", "sign-in page links to it", "/forgot-password" in read("frontend/src/pages/Login.jsx"))
+
+head("Job feed - free sources, cached, safe")
+sources_py = read("backend/app/services/job_sources.py")
+feed_py = read("backend/app/services/job_feed.py")
+# Read here: this section runs before the pasting section defines jobs_router.
+feed_router = read("backend/app/routers/jobs.py")
+ck("feed", "Adzuna source", "api.adzuna.com" in sources_py)
+ck("feed", "Himalayas source", "himalayas.app/jobs/api/search" in sources_py)
+ck("feed", "no Remotive or Arbeitnow (terms / fit)",
+   "remotive.com" not in sources_py and "arbeitnow.com" not in sources_py)
+ck("feed", "feed endpoint", '"/feed"' in feed_router)
+ck("feed", "feed is rate limited", "feed_rate_limit" in feed_router)
+ck("feed", "identical searches cached server-side", "feed_cache_minutes" in feed_py)
+ck("feed", "a failing source never breaks the feed", "_stored(" in feed_py)
+ck("feed", "only http(s) apply links kept", "_safe_url" in sources_py)
+ck("feed", "HTML descriptions reduced to text", "page_text" in sources_py)
+ck("feed", "Apply button names the source",
+   'source_publisher="Himalayas"' in sources_py and 'source_publisher="Adzuna"' in sources_py)
+ck("feed", "search bar on the Jobs page", 'type="search"' in read("frontend/src/components/JobFeed.jsx"))
+ck("feed", "feed shown on the Jobs page", "JobFeed" in read("frontend/src/pages/Jobs.jsx"))
+ck("feed", "Adzuna keys are secrets in the blueprint", "ADZUNA_APP_KEY" in read("render.yaml"))
 
 head("History is derived, not stored")
 ck("history", "no History table", "class History" not in models)
@@ -108,11 +189,12 @@ ck("ai", "original AI output is never overwritten", "never overwritten" in docum
 ck("ai", "no auto-apply or auto-send anywhere",
    not re.search(r"auto_apply|send_application|submit_application", read("backend/app/routers/documents.py")))
 
-head("Nav - exactly 4 pages: Jobs, Saved, History, Profile")
+head("Nav - Home, Jobs, Saved, History, Calendar, Profile")
 nav = read("frontend/src/components/BottomNav.jsx")
-routes = re.findall(r"to: '([^']+)'", nav)
-ck("nav", "exactly 4 nav items", len(routes) == 4, str(routes))
-ck("nav", "Jobs/Saved/History/Profile", set(routes) == {"/", "/saved", "/history", "/profile"}, str(routes))
+# Matches single- or double-quoted routes: the UI branch reformatted this file.
+routes = re.findall(r"to: .(/[a-z-]*).", nav)
+ck("nav", "core pages are in the nav", {"/jobs", "/saved", "/history", "/profile"} <= set(routes), str(routes))
+ck("nav", "at most 6 nav items", 1 <= len(routes) <= 6, str(routes))
 
 head("Apply link - required everywhere a job is shown")
 apply = read("frontend/src/components/ApplyLink.jsx")
@@ -124,13 +206,14 @@ ck("apply", "on the feed card", "ApplyLink" in read("frontend/src/components/Job
 ck("apply", "on job detail", "ApplyLink" in read("frontend/src/pages/JobDetail.jsx"))
 ck("apply", "on History", "ApplyLink" in read("frontend/src/pages/History.jsx"))
 
-head("Jobs enter by pasting - no paid feed")
+head("Jobs enter by pasting or from free sources - no paid feed")
 job_url = read("backend/app/services/job_url.py")
 ck("paste", "URL fetcher exists", bool(job_url))
 ck("paste", "paste-a-link endpoint", "/from-url" in jobs_router)
 ck("paste", "paste-the-text fallback", "/from-text" in jobs_router)
+# Adzuna is free (developer key), so only the paid JSearch/RapidAPI route is banned.
 ck("paste", "no paid job APIs remain",
-   not (BE / "app/services/jsearch.py").exists() and not (BE / "app/services/adzuna.py").exists())
+   not (BE / "app/services/jsearch.py").exists() and "rapidapi" not in read("backend/app/config.py").lower())
 ck("paste", "no RapidAPI key in config", "rapidapi" not in read("backend/app/config.py").lower())
 ck("paste", "cheapest-first extraction (JSON-LD before the model)",
    "parse_json_ld" in jobs_router and jobs_router.index("parse_json_ld") < jobs_router.index("extract_job_from_page"))
@@ -192,7 +275,7 @@ ck("deploy", "SPA redirect", (ROOT / "frontend/public/_redirects").exists())
 ck("deploy", "backend blueprint", (ROOT / "render.yaml").exists())
 ck("deploy", "no cron jobs for deleted tasks", "app.tasks digest" not in read("render.yaml"))
 ck("deploy", "GEMINI_API_KEY in the blueprint", "GEMINI_API_KEY" in read("render.yaml"))
-ck("deploy", "no paid keys in the blueprint", "RAPIDAPI" not in read("render.yaml") and "ADZUNA" not in read("render.yaml"))
+ck("deploy", "no paid keys in the blueprint", "RAPIDAPI" not in read("render.yaml"))
 ck("deploy", "container image", (ROOT / "backend/Dockerfile").exists())
 ck("deploy", "migrations run before serving", "alembic upgrade head" in read("backend/start.sh"))
 ck("deploy", "platform postgres:// normalised", "_PG_SCHEME_FIXES" in read("backend/app/config.py"))

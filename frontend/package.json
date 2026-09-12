@@ -9,9 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@floating-ui/react-dom": "^2.1.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.9.5"
+    "react-router-dom": "^7.9.5",
+    "react-tourlight": "^0.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.0",

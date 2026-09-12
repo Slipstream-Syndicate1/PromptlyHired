@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import ApplyLink from '../components/ApplyLink.jsx'
+import ApplicationPanel from '../components/ApplicationPanel.jsx'
 import MatchPanel from '../components/MatchPanel.jsx'
 
 export default function JobDetail() {
@@ -54,7 +55,7 @@ export default function JobDetail() {
     return (
       <main className="page">
         <div className="alert error">{error}</div>
-        <Link className="btn" to="/">
+        <Link className="btn" to="/jobs">
           ‹ Back to jobs
         </Link>
       </main>
@@ -92,57 +93,74 @@ export default function JobDetail() {
 
       {error && <div className="alert error">{error}</div>}
 
-      <MatchPanel
-        match={match}
-        analysing={analysing}
-        onAnalyse={() => analyse(false)}
-        onReanalyse={() => analyse(true)}
+      <ApplicationPanel
+        key={detail.application?.id ?? 'new'}
+        jobId={job.id}
+        application={detail.application}
+        onChange={(application) => setDetail((d) => ({ ...d, application }))}
       />
 
-      <h2 className="section-title">Tailored documents</h2>
-      <div className="card">
-        <p className="job-company" style={{ marginBottom: 12 }}>
-          Generated from your resume and this advert. You review and edit before
-          exporting — nothing is sent anywhere on your behalf.
-        </p>
-        <div className="job-actions" style={{ marginTop: 0 }}>
-          <button
-            className="btn primary"
-            disabled={Boolean(generating)}
-            onClick={() => generate('resume')}
-          >
-            {generating === 'resume' ? 'Writing…' : 'Generate resume'}
-          </button>
-          <button
-            className="btn primary"
-            disabled={Boolean(generating)}
-            onClick={() => generate('cover_letter')}
-          >
-            {generating === 'cover_letter' ? 'Writing…' : 'Generate cover letter'}
-          </button>
-        </div>
+      {job.description ? (
+        <>
+          <MatchPanel
+            match={match}
+            analysing={analysing}
+            onAnalyse={() => analyse(false)}
+            onReanalyse={() => analyse(true)}
+          />
 
-        {documents.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            {documents.map((doc) => (
-              <div className="list-row" key={doc.id}>
-                <div className="job-main">
-                  <div className="job-title">
-                    {doc.kind === 'resume' ? 'Resume' : 'Cover letter'}
-                    {doc.edited_content && <span className="chip"> edited</span>}
+          <h2 className="section-title">Tailored documents</h2>
+          <div className="card">
+            <p className="job-company" style={{ marginBottom: 12 }}>
+              Generated from your resume and this advert. You review and edit before
+              exporting — nothing is sent anywhere on your behalf.
+            </p>
+            <div className="job-actions" style={{ marginTop: 0 }}>
+              <button
+                className="btn primary"
+                disabled={Boolean(generating)}
+                onClick={() => generate('resume')}
+              >
+                {generating === 'resume' ? 'Writing…' : 'Generate resume'}
+              </button>
+              <button
+                className="btn primary"
+                disabled={Boolean(generating)}
+                onClick={() => generate('cover_letter')}
+              >
+                {generating === 'cover_letter' ? 'Writing…' : 'Generate cover letter'}
+              </button>
+            </div>
+
+            {documents.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                {documents.map((doc) => (
+                  <div className="list-row" key={doc.id}>
+                    <div className="job-main">
+                      <div className="job-title">
+                        {doc.kind === 'resume' ? 'Resume' : 'Cover letter'}
+                        {doc.edited_content && <span className="chip"> edited</span>}
+                      </div>
+                      <p className="job-company">
+                        {new Date(doc.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Link className="btn" to={`/documents/${doc.id}`}>
+                      Open
+                    </Link>
                   </div>
-                  <p className="job-company">
-                    {new Date(doc.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <Link className="btn" to={`/documents/${doc.id}`}>
-                  Open
-                </Link>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="alert info">
+          This job was logged by hand, so there is no advert to match your resume
+          against or tailor documents to. Paste the advert on the Jobs page to use
+          those features.
+        </div>
+      )}
 
       {job.description && (
         <>
