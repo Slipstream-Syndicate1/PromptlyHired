@@ -52,7 +52,12 @@ def check_migrations() -> tuple[str, str, str]:
 
 
 def check_ai() -> tuple[str, str, str]:
-    """Make a real (tiny) call - a key can be present, malformed, and unusable."""
+    """A real (tiny) call to every model in the fallback chain.
+
+    A key can be present, malformed and unusable; and on the free tier any one
+    model can be out of quota while the next still answers. Passes if at least
+    one model in the chain works, and says which ones do not.
+    """
     if not settings.ai_enabled:
         return _line(
             FAIL if settings.is_production else SKIP,
@@ -61,20 +66,34 @@ def check_ai() -> tuple[str, str, str]:
         )
     from app.services import ai
 
-    try:
-        reply = ai.ping()
-        return _line(OK, "Gemini API", f"{settings.gemini_model} replied {reply!r}")
-    except Exception as exc:  # noqa: BLE001
-        detail = str(exc)[:160]
-        # A wrong model name is the most likely failure, so name the alternatives.
+    outcomes = []
+    working = 0
+    for model in settings.gemini_models:
         try:
-            models = [m for m in ai.list_models() if "flash" in m.lower()][:4]
-            if models:
-                detail += f" | flash models on this key: {', '.join(models)}"
-        except Exception:  # noqa: BLE001
-            pass
-        return _line(FAIL, "Gemini API", detail)
+            ai.ping(model)
+            outcomes.append(f"{model} ok")
+            working += 1
+        except Exception as exc:  # noqa: BLE001
+            text = str(exc)
+            if "PerDay" in text:
+                outcomes.append(f"{model} daily quota used up")
+            elif "429" in text or "RESOURCE_EXHAUSTED" in text:
+                outcomes.append(f"{model} rate limited")
+            elif "404" in text:
+                outcomes.append(f"{model} not available")
+            else:
+                outcomes.append(f"{model} error: {text[:60]}")
 
+    detail = "; ".join(outcomes)
+    if working:
+        return _line(OK, "Gemini API", detail)
+    try:
+        models = [m for m in ai.list_models() if "flash" in m.lower()][:6]
+        if models:
+            detail += f" | flash models on this key: {', '.join(models)}"
+    except Exception:  # noqa: BLE001
+        pass
+    return _line(FAIL, "Gemini API", detail)
 
 
 def check_media_storage() -> tuple[str, str, str]:

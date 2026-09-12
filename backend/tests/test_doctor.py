@@ -196,3 +196,47 @@ def test_a_host_without_a_login_is_never_a_pass(monkeypatch):
     status, _, detail = doctor.check_email()
     assert status == "SKIP"
     assert "SMTP_USER" in detail
+
+
+# --- Gemini model chain ----------------------------------------------------------
+
+DAILY_QUOTA = "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+
+
+def _gemini_settings():
+    return Settings(
+        env="development", gemini_api_key="test-key",
+        gemini_model="primary", gemini_fallback_models="second",
+    )
+
+
+def test_gemini_passes_when_a_fallback_model_answers(monkeypatch):
+    from app.services import ai
+
+    monkeypatch.setattr(doctor, "settings", _gemini_settings())
+
+    def ping(model=None):
+        if model == "primary":
+            raise Exception(DAILY_QUOTA)
+        return "ok"
+
+    monkeypatch.setattr(ai, "ping", ping)
+    status, _, detail = doctor.check_ai()
+    assert status == "PASS"
+    assert "primary daily quota used up" in detail
+    assert "second ok" in detail
+
+
+def test_gemini_fails_when_no_model_answers(monkeypatch):
+    from app.services import ai
+
+    monkeypatch.setattr(doctor, "settings", _gemini_settings())
+
+    def ping(model=None):
+        raise Exception(DAILY_QUOTA)
+
+    monkeypatch.setattr(ai, "ping", ping)
+    monkeypatch.setattr(ai, "list_models", lambda: [])
+    status, _, detail = doctor.check_ai()
+    assert status == "FAIL"
+    assert "second daily quota used up" in detail

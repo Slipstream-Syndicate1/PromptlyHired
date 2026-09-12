@@ -372,7 +372,7 @@ def analyze_job(
     row.requirements_met = analysis.requirements_met[:40]
     row.requirements_missing = analysis.requirements_missing[:40]
     row.rationale = analysis.rationale
-    row.model_used = settings.gemini_model
+    row.model_used = ai.last_model_used()
     db.add(row)
     db.commit()
     db.refresh(row)

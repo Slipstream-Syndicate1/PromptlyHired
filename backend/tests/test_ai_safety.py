@@ -179,7 +179,8 @@ def test_quota_errors_are_not_retried(monkeypatch):
 
     with pytest.raises(ai.AIRateLimited):
         ai.analyze_match("resume", "Engineer", "Acme", "advert")
-    assert attempts["n"] == 1
+    # Once per model in the fallback chain, never twice on the same one.
+    assert attempts["n"] == len(ai.settings.gemini_models)
 
 
 def test_unknown_model_names_the_fix(monkeypatch):
@@ -193,3 +194,139 @@ def test_unknown_model_names_the_fix(monkeypatch):
     with pytest.raises(ai.AIError) as excinfo:
         ai.analyze_match("resume", "Engineer", "Acme", "advert")
     assert "doctor" in str(excinfo.value)
+
+
+# --- Model fallback on quota -------------------------------------------------------
+
+DAILY_QUOTA = (
+    "429 RESOURCE_EXHAUSTED. quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+)
+
+
+@pytest.fixture(autouse=True)
+def _forget_exhausted_models():
+    ai._exhausted_until.clear()
+    yield
+    ai._exhausted_until.clear()
+
+
+@pytest.fixture
+def chain(monkeypatch):
+    monkeypatch.setattr(ai.settings, "gemini_model", "primary")
+    monkeypatch.setattr(ai.settings, "gemini_fallback_models", ["second", "third"])
+    monkeypatch.setattr(ai.time, "sleep", lambda _s: None)
+
+
+def _fake_client(monkeypatch, behaviour):
+    calls = []
+
+    def generate_content(model, contents, config=None):
+        calls.append(model)
+        return behaviour(model)
+
+    class FakeModels:
+        pass
+
+    FakeModels.generate_content = staticmethod(generate_content)
+    monkeypatch.setattr(ai, "_client", lambda: type("C", (), {"models": FakeModels})())
+    return calls
+
+
+def _answer():
+    parsed = ai.MatchAnalysis(
+        match_percentage=70, requirements_met=["Python"],
+        requirements_missing=["Go"], rationale="A reasonable fit.",
+    )
+    return type("Response", (), {"parsed": parsed, "usage_metadata": None})()
+
+
+def test_quota_on_one_model_falls_back_to_the_next(monkeypatch, chain):
+    def behaviour(model):
+        if model == "primary":
+            raise Exception(DAILY_QUOTA)
+        return _answer()
+
+    calls = _fake_client(monkeypatch, behaviour)
+
+    assert ai.analyze_match("resume", "Engineer", "Acme", "advert").match_percentage == 70
+    assert calls == ["primary", "second"]
+    assert ai.last_model_used() == "second"
+
+    # The used-up model is skipped next time instead of spending a request.
+    ai.analyze_match("resume", "Engineer", "Acme", "advert")
+    assert calls == ["primary", "second", "second"]
+
+
+def test_every_model_out_of_daily_quota_says_so(monkeypatch, chain):
+    def behaviour(model):
+        raise Exception(DAILY_QUOTA)
+
+    calls = _fake_client(monkeypatch, behaviour)
+
+    with pytest.raises(ai.AIRateLimited) as excinfo:
+        ai.analyze_match("resume", "Engineer", "Acme", "advert")
+    assert calls == ["primary", "second", "third"]
+    assert "today" in str(excinfo.value)
+
+    # Nothing left to try, so the next call spends no request at all.
+    with pytest.raises(ai.AIRateLimited):
+        ai.analyze_match("resume", "Engineer", "Acme", "advert")
+    assert calls == ["primary", "second", "third"]
+
+
+def test_per_minute_quota_asks_for_a_minute(monkeypatch, chain):
+    def behaviour(model):
+        raise Exception("429 RESOURCE_EXHAUSTED rate limit. retryDelay: 30s")
+
+    _fake_client(monkeypatch, behaviour)
+    with pytest.raises(ai.AIRateLimited) as excinfo:
+        ai.analyze_match("resume", "Engineer", "Acme", "advert")
+    assert "minute" in str(excinfo.value)
+
+
+def test_retired_model_is_skipped(monkeypatch, chain):
+    def behaviour(model):
+        if model == "primary":
+            raise Exception("404 NOT_FOUND. This model models/primary is no longer available")
+        return _answer()
+
+    calls = _fake_client(monkeypatch, behaviour)
+    assert ai.analyze_match("resume", "Engineer", "Acme", "advert").match_percentage == 70
+    assert calls == ["primary", "second"]
+
+
+def test_busy_model_is_retried_in_place_not_skipped(monkeypatch, chain):
+    """Moving on after the full backoff would hold one request for over a minute."""
+    attempts = {"n": 0}
+
+    def behaviour(model):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise Exception("503 UNAVAILABLE high demand")
+        return _answer()
+
+    calls = _fake_client(monkeypatch, behaviour)
+    ai.analyze_match("resume", "Engineer", "Acme", "advert")
+    assert calls == ["primary", "primary"]
+
+
+def test_fallback_models_parse_from_the_environment():
+    from app.config import Settings
+
+    settings = Settings(gemini_model="a", gemini_fallback_models=" b, a ,c,, b")
+    assert settings.gemini_models == ["a", "b", "c"]
+
+
+def test_scanned_pdf_transcription_uses_the_model_chain(monkeypatch, chain):
+    from app.services import resume_text
+
+    monkeypatch.setattr(ai.settings, "gemini_api_key", "test-key")
+
+    def behaviour(model):
+        if model == "primary":
+            raise Exception(DAILY_QUOTA)
+        return type("Response", (), {"text": "Alex Morgan, backend engineer"})()
+
+    calls = _fake_client(monkeypatch, behaviour)
+    assert resume_text._from_pdf_via_model(b"%PDF-1.4 scanned") == "Alex Morgan, backend engineer"
+    assert calls == ["primary", "second"]

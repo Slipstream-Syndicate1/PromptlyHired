@@ -81,7 +81,7 @@ def generate_document(
         resume_id=resume.id,
         kind=payload.kind,
         content=result.model_dump(),
-        model_used=settings.gemini_model,
+        model_used=ai.last_model_used(),
     )
     db.add(document)
     db.commit()

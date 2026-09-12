@@ -65,24 +65,31 @@ def _from_pdf_via_model(raw: bytes) -> str:
     """Last resort for scanned PDFs. Costs one API call.
 
     Gemini reads PDFs natively, so a scan that pypdf cannot touch still works.
+    It walks the same model chain as every other AI call, so one model being
+    out of quota does not break uploads.
     """
     if not settings.ai_enabled:
         return ""
     from google.genai import types
 
-    from app.services.ai import _client
+    from app.services import ai
 
     logger.info("Falling back to the model for PDF text extraction (likely a scan)")
-    response = _client().models.generate_content(
-        model=settings.gemini_model,
-        contents=[
-            types.Part.from_bytes(data=raw, mime_type="application/pdf"),
-            "Transcribe this resume as plain text, preserving section headings and "
-            "bullet points. Output only the transcription.",
-        ],
-    )
-    return (response.text or "").strip()
-
+    contents = [
+        types.Part.from_bytes(data=raw, mime_type="application/pdf"),
+        "Transcribe this resume as plain text, preserving section headings and "
+        "bullet points. Output only the transcription.",
+    ]
+    for model in ai.models_to_try():
+        try:
+            response = ai._client().models.generate_content(model=model, contents=contents)
+        except Exception as exc:  # noqa: BLE001
+            if not ai.remember_quota_error(model, exc):
+                logger.warning("PDF transcription failed on %s: %s", model, str(exc)[:200])
+            continue
+        return (response.text or "").strip()
+    # Every model failed; the caller reports the file as unreadable.
+    return ""
 
 
 def extract(raw: bytes, content_type: str) -> str:

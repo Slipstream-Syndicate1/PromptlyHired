@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     # sibling answers immediately. Run `python -m app.tasks doctor` to list what
     # this key can call, and `gemini-flash-lite-latest` is a good fallback.
     gemini_model: str = "gemini-3.8-flash"
+    # Tried in order when a model runs out of quota. Each free-tier model has its
+    # own daily allowance (20 requests on the Flash models), so a chain multiplies
+    # what the free tier can serve. Comma-separated in the environment.
+    gemini_fallback_models: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["gemini-3.6-flash", "gemini-flash-lite-latest"]
+    )
     # Deeper reasoning for document drafting; extraction and scoring do not
     # need it and it costs latency against a low free-tier rate limit.
     gemini_thinking_level: str = "low"
@@ -106,6 +112,19 @@ class Settings(BaseSettings):
     @property
     def adzuna_enabled(self) -> bool:
         return bool(self.adzuna_app_id and self.adzuna_app_key)
+
+    @field_validator("gemini_fallback_models", mode="before")
+    @classmethod
+    def _split_models(cls, v):
+        items = v.split(",") if isinstance(v, str) else v
+        if not isinstance(items, list):
+            return v
+        return [m.strip() for m in items if isinstance(m, str) and m.strip()]
+
+    @property
+    def gemini_models(self) -> list[str]:
+        """The primary model, then the fallbacks, without repeats."""
+        return list(dict.fromkeys(m for m in (self.gemini_model, *self.gemini_fallback_models) if m))
 
     @field_validator("job_country", mode="before")
     @classmethod

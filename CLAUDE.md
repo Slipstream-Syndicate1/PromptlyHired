@@ -104,6 +104,7 @@ The model returns the resume/cover letter as **structured JSON** (sections, bull
   - `client.models.generate_content` with `response_schema` + `response_mime_type` — **structured output on every call**, which is an injection control as much as an ergonomic one.
   - `system_instruction` carries the rules; untrusted advert text never goes there.
   - Free tier is Flash-only and rate limited to single-digit requests per minute. Quota errors surface as a retryable 429, not a generic failure.
+  - **Each free-tier model allows only 20 requests a day.** Calls therefore walk a model chain (`GEMINI_MODEL`, then `GEMINI_FALLBACK_MODELS`, default `gemini-3.6-flash,gemini-flash-lite-latest`): a quota error moves to the next model, and a model out of quota is skipped for a while instead of being asked again. A busy model is retried in place rather than skipped, so one request never waits through every model. Saved results record the model that actually answered, and `app.tasks doctor` pings every model in the chain.
   - Provider choice here is a cost decision. The prompts, schemas and injection defenses are provider-agnostic; only `_generate` in `services/ai.py` is Gemini-specific.
 - **Resume ingestion:** pypdf and python-docx locally (free). Only a scan that yields too little text falls back to the model reading the PDF natively.
 - **Document export:** HTML/CSS template → PDF, server-side.
