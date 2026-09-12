@@ -1,9 +1,14 @@
 import { NavLink } from 'react-router-dom'
 
-/* Four slots: the feed, the shortlist, the record of work done, and settings. */
+/* Primary navigation: dashboard plus the core job-search areas. */
 const ITEMS = [
   {
     to: '/',
+    label: 'Home',
+    path: 'M12 3 3 10v11h7v-6h4v6h7V10l-9-7Zm0 2.5 7 5.4V19h-3v-6H8v6H5v-8.1l7-5.4Z',
+  },
+  {
+    to: '/jobs',
     label: 'Jobs',
     path: 'M10 3a7 7 0 1 0 4.2 12.6l4.1 4.1 1.4-1.4-4.1-4.1A7 7 0 0 0 10 3Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z',
   },
