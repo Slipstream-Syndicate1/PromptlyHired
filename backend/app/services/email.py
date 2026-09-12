@@ -20,7 +20,7 @@ def send_email(to: str, subject: str, text_body: str, html_body: str | None = No
     if not settings.email_enabled:
         if settings.is_production:
             # No recipient either: an email address is personal data.
-            logger.error("SMTP_HOST is unset - could not send %r", subject)
+            logger.error("SMTP is not fully configured - could not send %r", subject)
         else:
             logger.warning(
                 "SMTP not configured - printing instead of sending.\nTo: %s\nSubject: %s\n\n%s",

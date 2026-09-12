@@ -107,6 +107,8 @@ def _get_json(url: str, params: dict[str, str], name: str) -> dict:
 
     if response.status_code == 429:
         raise SourceError(f"{name} rate limit reached")
+    if response.status_code in (401, 403):
+        raise SourceError(f"{name} rejected the credentials")
     if response.status_code >= 400:
         # Status only: the URL would leak Adzuna's key into the logs.
         logger.warning("%s returned HTTP %s", name, response.status_code)

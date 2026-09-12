@@ -98,6 +98,68 @@ def check_media_storage() -> tuple[str, str, str]:
         return _line(FAIL, "Media storage", str(exc)[:200])
 
 
+def check_job_feed() -> tuple[str, str, str]:
+    """Search both job sources for real. A wrong Adzuna key looks fine in the env."""
+    from app.services import job_sources
+
+    try:
+        himalayas = len(job_sources.search_himalayas(q=None, job_type=None, page=1))
+    except job_sources.SourceError as exc:
+        return _line(FAIL, "Job feed", f"Himalayas: {exc}")
+    found = f"Himalayas returned {himalayas} jobs"
+
+    if not settings.adzuna_enabled:
+        # The feed still works on Himalayas alone, so this is degraded, not broken.
+        return _line(SKIP, "Job feed", f"{found}; ADZUNA_APP_ID/KEY unset - remote roles only")
+    try:
+        adzuna = len(
+            job_sources.search_adzuna(
+                q=None, location=None, job_type=None, posted_within_days=None, page=1
+            )
+        )
+    except job_sources.SourceError as exc:
+        return _line(FAIL, "Job feed", f"{found}; Adzuna: {exc}")
+    return _line(OK, "Job feed", f"{found}, Adzuna returned {adzuna} ({settings.job_country})")
+
+
+def check_email() -> tuple[str, str, str]:
+    """Connect and log in to the SMTP server, without sending anything."""
+    if not settings.email_enabled:
+        return _line(
+            FAIL if settings.is_production else SKIP,
+            "Email (SMTP)",
+            "SMTP_HOST, SMTP_USER and SMTP_PASSWORD are not all set - "
+            "forgot-password emails cannot be sent"
+            + ("" if settings.is_production else "; development prints reset links to the log"),
+        )
+
+    import smtplib
+
+    host, port = settings.smtp_host, settings.smtp_port
+    try:
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=15)
+        else:
+            server = smtplib.SMTP(host, port, timeout=15)
+        with server:
+            if port != 465:
+                server.starttls()
+            if settings.smtp_user:
+                server.login(settings.smtp_user, settings.smtp_password)
+    except smtplib.SMTPAuthenticationError:
+        return _line(
+            FAIL,
+            "Email (SMTP)",
+            f"{host} rejected the login for {settings.smtp_user}. For Gmail, SMTP_PASSWORD "
+            "must be a 16-character App Password, not the normal account password",
+        )
+    except (smtplib.SMTPException, OSError) as exc:
+        return _line(FAIL, "Email (SMTP)", f"could not reach {host}:{port} ({type(exc).__name__})")
+
+    sender = settings.smtp_from or settings.smtp_user
+    return _line(OK, "Email (SMTP)", f"logged in to {host} as {settings.smtp_user}; sends as {sender}")
+
+
 def check_frontend_urls() -> tuple[str, str, str]:
     problems = settings.production_blockers()
     if problems:
@@ -114,6 +176,8 @@ def run() -> int:
         check_frontend_urls(),
         check_ai(),
         check_media_storage(),
+        check_job_feed(),
+        check_email(),
     ]
 
     print(f"\nPromptlyHired doctor  (ENV={settings.env})")

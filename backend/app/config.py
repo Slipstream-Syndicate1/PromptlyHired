@@ -98,7 +98,10 @@ class Settings(BaseSettings):
 
     @property
     def email_enabled(self) -> bool:
-        return bool(self.smtp_host)
+        # All three, not just the host. Gmail and the other free providers need a
+        # login, and a host on its own would let the app try to send mail that
+        # never arrives - and stop printing reset links in development.
+        return bool(self.smtp_host and self.smtp_user and self.smtp_password)
 
     @property
     def adzuna_enabled(self) -> bool:
@@ -203,7 +206,8 @@ class Settings(BaseSettings):
             )
         if not self.email_enabled:
             warnings.append(
-                "SMTP_HOST is unset: forgot-password emails cannot be sent, so anyone who "
+                "SMTP_HOST, SMTP_USER and SMTP_PASSWORD are not all set: forgot-password "
+                "emails cannot be sent, so anyone who "
                 "forgets their password is locked out. Reset links are never logged here."
             )
         if not self.adzuna_enabled:
