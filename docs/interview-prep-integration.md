@@ -2,7 +2,7 @@
 
 ## Integration
 
-The calendar UI is the entry point while application status tracking is not yet available. Calendar events are account-owned API records. Interview events link to an existing job; job ownership is checked server-side through UserJob. The date, time, and timezone belong to the calendar event.
+The calendar UI and job detail application-status control are the entry points. Tracking models, migrations, API, and tests were selectively reused from `origin/application-tracking`; the existing calendar and preparation components remain in place. Calendar events are account-owned API records. Interview events link to an existing job; job ownership is checked server-side through UserJob. The date, time, and timezone belong to the calendar event.
 
 From Calendar, create an Interview event, select the job, supply its time, and choose Prepare with AI. The protected route `/interviews/:interviewId/prep` loads the authorized event and existing plan without generating anything. The user chooses technical, behavioral, or not sure (both), plus daily minutes, then explicitly generates a plan. Same-day interviews require actual available minutes before the interview.
 
@@ -22,9 +22,11 @@ The previous calendar used one browser-wide localStorage key without an account 
 - `backend/app/interview_prep_schemas.py`: service contracts.
 - Backend calendar/preparation routes and models own persistence, authorization, revision checks, and request deduplication.
 
-## Future tracker integration
+## Tracker integration
 
-When application stages are added, persist the stage first, then show the existing InterviewPrepCTA for the interview stage. Its `onSchedule` should open the calendar form for that job, and `onOpen` should navigate to `/interviews/{eventId}/prep`. There is no separate preparation calendar. Multiple interview events can link to the same job and retain separate preparation histories.
+On a job detail page, change Application status from Applied to Interview. After the save succeeds, the preparation action links to existing future interview events for that job. If none exists, Schedule interview opens `/calendar?job={jobId}` with the job and Interview type preselected. Calendar remains the authoritative interview date/time source. Multiple interview events can link to a job and keep independent plans.
+
+The teammate's separate `next_event_at` tracking fields are retained for compatibility but are not used as a second interview calendar. The full drag-and-drop Tracking board was not imported; its status API powers the job detail selector. No unrelated UI, authentication, or job-feed changes were copied, and main was not modified.
 
 ## Local verification
 

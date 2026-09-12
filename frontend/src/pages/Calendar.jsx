@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   EVENT_TYPES,
   eventTypeLabel,
@@ -150,14 +150,14 @@ export function CalendarPreview() {
   );
 }
 
-function EventForm({ onAdd, initial, onCancel, jobs, saving }) {
+function EventForm({ onAdd, initial, onCancel, jobs, saving, suggestedJob }) {
   const [form, setForm] = useState(initial || {
     title: "",
     date: dateKey(new Date()),
     time: "",
-    type: "deadline",
+    type: suggestedJob ? "interview" : "deadline",
     notes: "",
-    job_id: "",
+    job_id: suggestedJob || "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
 
@@ -224,7 +224,7 @@ function EventForm({ onAdd, initial, onCancel, jobs, saving }) {
         <span>Linked job</span>
         <select value={form.job_id || ""} onChange={update("job_id")} required>
           <option value="">Select a job</option>
-          {jobs.map(job => <option key={job.id} value={job.id}>{job.title} · {job.company}</option>)}
+          {jobs.map(job => <option key={job.id} value={job.id}>{job.title} · {job.company?.name || job.company}</option>)}
         </select>
       </label>}
       <label className="field">
@@ -245,7 +245,9 @@ function EventForm({ onAdd, initial, onCancel, jobs, saving }) {
   );
 }
 
-export default function Calendar() {
+function CalendarContent() {
+  const [search] = useSearchParams();
+  const suggestedJob = search.get("job");
   const [month, setMonth] = useState(() => monthStart(new Date()));
   const { events, setEvents, loading, error: loadError } = useCalendar();
 
@@ -397,7 +399,7 @@ export default function Calendar() {
         </section>
 
         <aside className="calendar-side">
-          <EventForm key={`${user?.id}-${editing?.id || "new"}`} onAdd={addEvent} initial={editing} onCancel={() => setEditing(null)} jobs={jobs} saving={saving || loading || !!loadError} />
+          <EventForm key={`${user?.id}-${editing?.id || "new"}`} onAdd={addEvent} suggestedJob={suggestedJob} initial={editing} onCancel={() => setEditing(null)} jobs={jobs} saving={saving || loading || !!loadError} />
           <section className="upcoming card">
             <div className="section-heading-row">
               <h2>Coming up</h2>
@@ -443,4 +445,9 @@ export default function Calendar() {
       </div>
     </main>
   );
+}
+
+export default function Calendar() {
+  const { user } = useAuth();
+  return <CalendarContent key={user?.id} />;
 }

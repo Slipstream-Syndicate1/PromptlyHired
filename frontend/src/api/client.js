@@ -193,6 +193,8 @@ export const api = {
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
   history: () => request('/api/history'),
 
+  setJobStatus: (id, status) => request(`/api/tracking/${id}`, { method: 'PATCH', body: { status } }),
+
   // --- Calendar and interview preparation ---
   listCalendarEvents: () => request('/api/calendar'),
   createCalendarEvent: (payload) => request('/api/calendar', { method: 'POST', body: payload }),

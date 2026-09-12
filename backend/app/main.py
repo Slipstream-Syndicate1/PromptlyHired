@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import auth, documents, jobs, profile, resumes, saved
+from app.routers import auth, documents, jobs, profile, resumes, saved, calendar, interview_prep, tracking
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -86,6 +86,9 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+app.include_router(tracking.router)
+app.include_router(calendar.router)
+app.include_router(interview_prep.router)
 app.include_router(auth.router)
 app.include_router(jobs.router)
 app.include_router(saved.router)

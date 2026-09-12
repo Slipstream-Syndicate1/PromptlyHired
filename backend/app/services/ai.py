@@ -77,7 +77,7 @@ def _client():
         )
     from google import genai
 
-    return genai.Client(api_key=settings.gemini_api_key)
+    return genai.Client(api_key=settings.gemini_api_key, http_options={"timeout": 60_000})
 
 
 def wrap_untrusted(text: str, limit: int = MAX_JOB_DESCRIPTION_CHARS) -> str:

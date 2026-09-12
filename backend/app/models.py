@@ -38,6 +38,20 @@ class DocumentKind(str, enum.Enum):
     cover_letter = "cover_letter"
 
 
+class ApplicationStatus(str, enum.Enum):
+    applied = "applied"
+    interview = "interview"
+    offer = "offer"
+    rejected = "rejected"
+
+
+class NextEventType(str, enum.Enum):
+    interview = "interview"
+    deadline = "deadline"
+    opens = "opens"  # applications for the role open on this date
+    other = "other"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -174,6 +188,20 @@ class UserJob(Base):
 
     Distinct from SavedJob, which is a deliberate shortlist. Everything you
     paste lands here; only what you star lands there.
+
+    `status` is the Tracking board's kanban stage. It is null until the user
+    explicitly marks the job as applied - the app never applies on their
+    behalf, so nothing here is inferred. `applied_at` is set the first time a
+    job gets a status and then left alone, even as it moves stages, so it
+    keeps meaning "when I applied" rather than "when this last moved."
+    `status_updated_at` tracks the latter, for sorting the board by recent
+    activity.
+
+    `next_event_at` is the next thing coming up for this application - an
+    interview, a deadline, a reminder - set by the user, independent of
+    `status` (you can flag a deadline before applying, or after an Offer).
+    It is backend-persisted and tied to this job, unlike a personal calendar
+    feature backed by browser storage, which knows nothing about your jobs.
     """
 
     __tablename__ = "user_jobs"
@@ -189,6 +217,16 @@ class UserJob(Base):
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True, nullable=False
     )
+    status: Mapped[ApplicationStatus | None] = mapped_column(
+        Enum(ApplicationStatus, name="application_status"), index=True
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    next_event_type: Mapped[NextEventType | None] = mapped_column(
+        Enum(NextEventType, name="next_event_type")
+    )
+    next_event_note: Mapped[str | None] = mapped_column(String(300))
 
     job: Mapped[Job] = relationship()
 

@@ -1,3 +1,4 @@
+import JobInterviewAction from "../components/interview-prep/JobInterviewAction.jsx"
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
@@ -91,6 +92,8 @@ export default function JobDetail() {
       </div>
 
       {error && <div className="alert error">{error}</div>}
+
+      <JobInterviewAction key={job.id} job={job} onUpdate={(updated) => setDetail((current) => ({ ...current, job: updated }))} />
 
       <MatchPanel
         match={match}
