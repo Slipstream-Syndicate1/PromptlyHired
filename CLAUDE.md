@@ -334,6 +334,7 @@ The server makes an outbound request to a URL the user controls. Unchecked, `htt
 ### Application security (carried forward, all still required)
 
 - Password hashing via bcrypt — never plaintext, never a hand-rolled scheme.
+- **Forgot password** uses single-use reset links that expire after 30 minutes and are stored only as SHA-256 hashes. The request endpoint answers identically whether or not the email exists, and sends the email after responding so timing cannot reveal it either. A reset signs out every session. Production never writes a reset link to the logs; without SMTP configured it cannot send one at all, which `production_warnings` reports.
 - JWT with short expiry + rotating refresh tokens stored only as hashes.
 - Parameterized queries / SQLAlchemy ORM only — no string-interpolated SQL.
 - Pydantic validation on every endpoint; reject malformed data at the API boundary.

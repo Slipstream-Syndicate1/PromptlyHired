@@ -62,3 +62,12 @@ def generate_refresh_token() -> tuple[str, str, datetime]:
 
 def hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def generate_password_reset_token() -> tuple[str, str, datetime]:
+    """Return (raw_token, token_hash, expires_at) for a reset link. Only the hash is stored."""
+    raw = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.password_reset_expire_minutes
+    )
+    return raw, hash_refresh_token(raw), expires_at

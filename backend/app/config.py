@@ -39,6 +39,17 @@ class Settings(BaseSettings):
     )
     app_base_url: str = "http://localhost:5173"
 
+    # --- Password reset email ---
+    # With no SMTP host, development prints the reset link to the server log
+    # instead of emailing it. Any SMTP provider works; a Gmail App Password
+    # keeps it free.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "PromptlyHired <no-reply@promptlyhired.app>"
+    password_reset_expire_minutes: int = 30
+
     # --- Job sources ---
     # There are none. Jobs enter the system only when a user pastes a link to
     # one, which is why this project costs nothing to run. Every job-board API
@@ -78,6 +89,10 @@ class Settings(BaseSettings):
     # Shared rate-limit store. Without it the limiter is per-process, so more
     # than one worker or instance multiplies the effective limit.
     redis_url: str = ""
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.smtp_host)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -167,6 +182,11 @@ class Settings(BaseSettings):
             warnings.append(
                 "GEMINI_API_KEY is unset: resume analysis, match scoring and document "
                 "generation are all disabled. That is the core of the product."
+            )
+        if not self.email_enabled:
+            warnings.append(
+                "SMTP_HOST is unset: forgot-password emails cannot be sent, so anyone who "
+                "forgets their password is locked out. Reset links are never logged here."
             )
         if not self.redis_url:
             warnings.append(

@@ -37,14 +37,20 @@ export function AuthProvider({ children }) {
     setUser(await api.me())
   }, [])
 
+  // A successful reset returns a fresh session, so the user lands signed in.
+  const resetPassword = useCallback(async (token, password) => {
+    setTokens(await api.resetPassword(token, password))
+    setUser(await api.me())
+  }, [])
+
   const logout = useCallback(async () => {
     await api.logout()
     setUser(null)
   }, [])
 
   const value = useMemo(
-    () => ({ user, setUser, booting, login, signup, logout }),
-    [user, booting, login, signup, logout],
+    () => ({ user, setUser, booting, login, signup, resetPassword, logout }),
+    [user, booting, login, signup, resetPassword, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
