@@ -66,6 +66,27 @@ for path in ["backend/app/services/notifications.py", "backend/app/services/push
              "frontend/src/pages/Applications.jsx", "frontend/src/pages/Analytics.jsx"]:
     ck("removed", f"{path} deleted", not (ROOT / path).exists())
 
+head("Job feed - free sources, cached, safe")
+sources_py = read("backend/app/services/job_sources.py")
+feed_py = read("backend/app/services/job_feed.py")
+# Read here: this section runs before the pasting section defines jobs_router.
+feed_router = read("backend/app/routers/jobs.py")
+ck("feed", "Adzuna source", "api.adzuna.com" in sources_py)
+ck("feed", "Himalayas source", "himalayas.app/jobs/api/search" in sources_py)
+ck("feed", "no Remotive or Arbeitnow (terms / fit)",
+   "remotive.com" not in sources_py and "arbeitnow.com" not in sources_py)
+ck("feed", "feed endpoint", '"/feed"' in feed_router)
+ck("feed", "feed is rate limited", "feed_rate_limit" in feed_router)
+ck("feed", "identical searches cached server-side", "feed_cache_minutes" in feed_py)
+ck("feed", "a failing source never breaks the feed", "_stored(" in feed_py)
+ck("feed", "only http(s) apply links kept", "_safe_url" in sources_py)
+ck("feed", "HTML descriptions reduced to text", "page_text" in sources_py)
+ck("feed", "Apply button names the source",
+   'source_publisher="Himalayas"' in sources_py and 'source_publisher="Adzuna"' in sources_py)
+ck("feed", "search bar on the Jobs page", 'type="search"' in read("frontend/src/components/JobFeed.jsx"))
+ck("feed", "feed shown on the Jobs page", "JobFeed" in read("frontend/src/pages/Jobs.jsx"))
+ck("feed", "Adzuna keys are secrets in the blueprint", "ADZUNA_APP_KEY" in read("render.yaml"))
+
 head("History is derived, not stored")
 ck("history", "no History table", "class History" not in models)
 documents_router = read("backend/app/routers/documents.py")
@@ -124,13 +145,14 @@ ck("apply", "on the feed card", "ApplyLink" in read("frontend/src/components/Job
 ck("apply", "on job detail", "ApplyLink" in read("frontend/src/pages/JobDetail.jsx"))
 ck("apply", "on History", "ApplyLink" in read("frontend/src/pages/History.jsx"))
 
-head("Jobs enter by pasting - no paid feed")
+head("Jobs enter by pasting or from free sources - no paid feed")
 job_url = read("backend/app/services/job_url.py")
 ck("paste", "URL fetcher exists", bool(job_url))
 ck("paste", "paste-a-link endpoint", "/from-url" in jobs_router)
 ck("paste", "paste-the-text fallback", "/from-text" in jobs_router)
+# Adzuna is free (developer key), so only the paid JSearch/RapidAPI route is banned.
 ck("paste", "no paid job APIs remain",
-   not (BE / "app/services/jsearch.py").exists() and not (BE / "app/services/adzuna.py").exists())
+   not (BE / "app/services/jsearch.py").exists() and "rapidapi" not in read("backend/app/config.py").lower())
 ck("paste", "no RapidAPI key in config", "rapidapi" not in read("backend/app/config.py").lower())
 ck("paste", "cheapest-first extraction (JSON-LD before the model)",
    "parse_json_ld" in jobs_router and jobs_router.index("parse_json_ld") < jobs_router.index("extract_job_from_page"))
@@ -192,7 +214,7 @@ ck("deploy", "SPA redirect", (ROOT / "frontend/public/_redirects").exists())
 ck("deploy", "backend blueprint", (ROOT / "render.yaml").exists())
 ck("deploy", "no cron jobs for deleted tasks", "app.tasks digest" not in read("render.yaml"))
 ck("deploy", "GEMINI_API_KEY in the blueprint", "GEMINI_API_KEY" in read("render.yaml"))
-ck("deploy", "no paid keys in the blueprint", "RAPIDAPI" not in read("render.yaml") and "ADZUNA" not in read("render.yaml"))
+ck("deploy", "no paid keys in the blueprint", "RAPIDAPI" not in read("render.yaml"))
 ck("deploy", "container image", (ROOT / "backend/Dockerfile").exists())
 ck("deploy", "migrations run before serving", "alembic upgrade head" in read("backend/start.sh"))
 ck("deploy", "platform postgres:// normalised", "_PG_SCHEME_FIXES" in read("backend/app/config.py"))

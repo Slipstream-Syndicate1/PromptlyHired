@@ -18,17 +18,18 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import CurrentUser, DbSession
-from app.models import Company, GeneratedDocument, Job, JobMatch, UserJob
-from app.rate_limit import ai_rate_limit
+from app.models import Company, GeneratedDocument, Job, JobMatch, JobType, UserJob
+from app.rate_limit import ai_rate_limit, feed_rate_limit
 from app.routers.resumes import active_resume, require_active_resume
 from app.schemas import (
     GeneratedDocumentOut,
     JobDetailOut,
+    JobFeedOut,
     JobMatchOut,
     JobOut,
     clean_text,
 )
-from app.services import ai, job_url
+from app.services import ai, job_feed, job_url
 from app.services.user_state import decorate_jobs
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -230,6 +231,44 @@ def list_jobs(user: CurrentUser, db: DbSession) -> list[JobOut]:
         )
     )
     return decorate_jobs(db, user, jobs)
+
+
+@router.get("/feed", response_model=JobFeedOut, dependencies=[Depends(feed_rate_limit)])
+def search_feed(
+    user: CurrentUser,
+    db: DbSession,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    location: Annotated[str | None, Query(max_length=120)] = None,
+    job_type: JobType | None = None,
+    remote_only: bool = False,
+    posted_within_days: Annotated[int | None, Query(ge=1, le=90)] = None,
+    page: Annotated[int, Query(ge=1, le=20)] = 1,
+) -> JobFeedOut:
+    """Live jobs from the free sources, searchable and filterable.
+
+    Declared before /{job_id} so "feed" is never read as an id. Caching,
+    storage and failure handling live in services/job_feed.py.
+    """
+    # Every Himalayas listing is remote, so "remote" as a type means remote only.
+    if job_type is JobType.remote:
+        job_type, remote_only = None, True
+    # Lowercased so "Python" and "python" share one cache entry.
+    query = job_feed.FeedQuery(
+        q=(clean_text(q) or "").lower() or None,
+        location=(clean_text(location) or "").lower() or None,
+        job_type=job_type,
+        remote_only=remote_only,
+        posted_within_days=posted_within_days,
+        page=page,
+    )
+    result = job_feed.search(db, query)
+    return JobFeedOut(
+        jobs=decorate_jobs(db, user, job_feed.load_jobs(db, result.job_ids)),
+        page=page,
+        has_more=result.has_more,
+        sources=result.sources,
+        notice=result.notice,
+    )
 
 
 def _load_job(db, job_id: int) -> Job:

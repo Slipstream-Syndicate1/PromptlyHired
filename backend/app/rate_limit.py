@@ -142,6 +142,8 @@ class RateLimit:
 login_rate_limit = RateLimit("login", max_requests=10, window_seconds=300)
 signup_rate_limit = RateLimit("signup", max_requests=5, window_seconds=3600)
 refresh_rate_limit = RateLimit("refresh", max_requests=60, window_seconds=3600)
+# Cached searches cost nothing, but uncached ones spend the Adzuna quota.
+feed_rate_limit = RateLimit("feed", max_requests=120, window_seconds=3600)
 
 # Every AI call spends real money. An unlimited scoring endpoint is a way for a
 # logged-in user - or a stolen token - to run up the bill.
@@ -157,5 +159,11 @@ def reset_all() -> None:
     client IP, which would otherwise trip the signup limiter and fail unrelated
     tests. Not wired to any route.
     """
-    for limiter in (login_rate_limit, signup_rate_limit, refresh_rate_limit, ai_rate_limit):
+    for limiter in (
+        login_rate_limit,
+        signup_rate_limit,
+        refresh_rate_limit,
+        feed_rate_limit,
+        ai_rate_limit,
+    ):
         limiter._local._hits.clear()

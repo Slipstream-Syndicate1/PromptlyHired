@@ -21,7 +21,7 @@ This project was previously a job search + **application status tracker** (Appli
 The pivot **keeps the platform and replaces the domain**. Retained wholesale:
 
 - Auth (bcrypt, short-lived JWTs, rotating hashed refresh tokens, rate limiting)
-- ~~The job-source layer~~ — removed; see "Why there is no job feed" below
+- The job-source layer, rebuilt on free sources; see "Where jobs come from" below
 - File upload pipeline (S3/R2, validation, size caps) — repurposed from avatars to resumes
 - Deployment: Render blueprint, Netlify config, Dockerfile, CI, production config guards, `app.tasks doctor`
 - PWA shell, responsive CSS, auth context, API client with transparent token refresh
@@ -44,20 +44,34 @@ Every model call goes through the backend. The API key never reaches the browser
 
 It also means all generation is metered, logged, and cacheable in one place.
 
-### Why there is no job feed
+### Where jobs come from
 
-**This project must cost nothing to run.** That single constraint removed the feed:
+**This project must cost nothing to run**, so every source is free:
 
-- **JSearch** (which previously supplied listings, wrapping Google for Jobs) is paid beyond a ~200 call/month trial.
-- **Indeed** retired its Publisher API in 2023–24 and closed it to new developers. **LinkedIn's** is partner-only. Neither is obtainable by an individual, at any price.
-- **Scraping** Google Search or the big boards violates their terms and gets IPs blocked. Not an option.
-- The free no-key APIs that do exist (Arbeitnow, RemoteOK, Remotive, Himalayas) skew heavily to remote tech roles. A feed built on them would quietly misrepresent the job market.
+| Source | Access | Rules we follow |
+| --- | --- | --- |
+| **Adzuna** | Free developer key (`ADZUNA_APP_ID`, `ADZUNA_APP_KEY`) | 25 calls a minute, 250 a day, 2,500 a month. Its terms allow publishing its listings. |
+| **Himalayas** | Free, no key | Link back to the Himalayas listing and name Himalayas as the source. Data refreshes daily, so polling faster gains nothing. |
+| **Pasted links** | The user pastes any posting | One page the user explicitly asked for, fetched server-side (see SSRF). |
 
-So jobs enter **one at a time, when the user pastes a link to one they found themselves**. Fetching a single page a user explicitly asked for is a different act from harvesting a board in bulk, and it works with *any* source — LinkedIn, Indeed, a company careers page — which the old feed never did.
+Rejected, and why:
+- **JSearch** is paid beyond a small trial.
+- **Indeed** retired its Publisher API and **LinkedIn**'s is partner-only. Neither is obtainable.
+- **Remotive** forbids displaying its jobs behind a sign-up, which this app requires.
+- **Arbeitnow** is mostly German listings, a poor fit for our users.
+- **Scraping** Google or the big boards violates their terms and gets IPs blocked.
 
-Where a site blocks server-side fetches (LinkedIn and Indeed both do), the user pastes the advert text instead. That path costs no AI quota at all.
+How the feed works:
+- `GET /api/jobs/feed` queries both sources in parallel, merges them newest first, and drops cross-source duplicates by title and employer.
+- **Identical searches are served from a server-side cache** (`FEED_CACHE_MINUTES`, default 180). Adzuna's quota is about 80 calls a day; without the cache a handful of users would exhaust it. The cache is shared between users and holds job ids, so saved state and match scores stay per-user and current.
+- Fetched jobs are stored as ordinary `Job` rows, so saving, match analysis, documents and application tracking all work on them unchanged.
+- A source that fails never takes the feed down. If every source fails, the feed serves matching jobs stored from earlier searches and says so.
+- Without Adzuna keys the feed runs on Himalayas alone. **Remote only** always uses Himalayas alone, since all its listings are remote.
+- Upstream data is untrusted: descriptions arrive as HTML and are reduced to text, only `http(s)` apply links and `https` logos are kept, and source errors never include the request URL, which for Adzuna carries the API key.
 
-**Extraction is cheapest-first**: schema.org JSON-LD, then known description containers, and only then the model. Most pastes cost nothing.
+Adzuna returns truncated description snippets, so match analysis on an Adzuna job works from less text than on a Himalayas or pasted job. The Apply button always opens the full listing.
+
+Pasting still matters for everything the feed does not carry, LinkedIn and Indeed included. Where a site blocks server-side fetches, the user pastes the advert text instead, which costs no AI quota. **Extraction is cheapest-first**: schema.org JSON-LD, then known description containers, and only then the model.
 
 ### Why match scoring is on-demand, not precomputed
 
@@ -90,7 +104,7 @@ The model returns the resume/cover letter as **structured JSON** (sections, bull
   - Provider choice here is a cost decision. The prompts, schemas and injection defenses are provider-agnostic; only `_generate` in `services/ai.py` is Gemini-specific.
 - **Resume ingestion:** pypdf and python-docx locally (free). Only a scan that yields too little text falls back to the model reading the PDF natively.
 - **Document export:** HTML/CSS template → PDF, server-side.
-- **Job source:** none. The user pastes a link; see "Why there is no job feed".
+- **Job sources:** Adzuna (free developer key) and Himalayas (free, no key), plus any link the user pastes. See "Where jobs come from".
 
 ---
 
@@ -100,7 +114,7 @@ The model returns the resume/cover letter as **structured JSON** (sections, bull
 
 | Thing | How it is free |
 | --- | --- |
-| Job listings | The user pastes a link. No API at all. |
+| Job listings | Adzuna and Himalayas free tiers, cached server-side; plus pasted links |
 | Page fetch + parse | JSON-LD / container parsing, no model call |
 | AI | Gemini free tier |
 | Database, API, frontend | Render + Netlify free tiers |
@@ -111,6 +125,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 1. **Never call the model when parsing would do.** JSON-LD first, always.
 2. **Persist every AI result.** Recomputation is only ever user-initiated.
 3. **Surface 429s honestly** as "wait a minute and retry", not as a generic failure.
+4. **Never let traffic multiply job-source calls.** Identical feed searches are served from a server-side cache.
 
 ## Data model
 
@@ -134,7 +149,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 - id, company_id (FK), title, location, salary_range, url, posted_date, description, source_api, external_id, source_publisher
 - `url` is the **direct apply link** to the original posting. It is load-bearing: the app never hosts applications, so this is the only route the user has to actually apply. A listing with no usable apply link is close to worthless.
 - `source_publisher` names the destination on the button ("Apply on LinkedIn") rather than sending the user to an unlabelled site.
-- `source_api` is `pasted`; `external_id` is a SHA-256 of the URL (or of the text when there is no URL), so re-pasting the same job reuses the row instead of duplicating it.
+- `source_api` is `adzuna`, `himalayas` or `pasted`. Feed jobs keep the source's own id as `external_id`, so refetching updates the row. Pasted jobs use a SHA-256 of the URL (or of the text when there is no URL), so re-pasting the same job reuses the row instead of duplicating it.
 
 **JobMatch** (AI-derived, computed on card open, cached)
 - id, user_id (FK), job_id (FK), resume_id (FK), match_percentage (0-100), requirements_met (list), requirements_missing (list), rationale, generated_at, model_used
@@ -159,7 +174,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 
 **Bottom nav — 4 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components):
 
-1. **Jobs** — a paste box plus the jobs this user has added. Cards show:
+1. **Jobs** — a live job feed with a **search bar and filters** (keywords, location, job type, remote only, date posted), then a paste box and the jobs this user has added. Typing in the search box also filters the user's own jobs. Cards show:
    - Company logo, name, short description
    - Job title / role
    - **Apply link** to the original posting
