@@ -4,6 +4,7 @@ import InstallPrompt from "./components/InstallPrompt.jsx";
 import OfflineBanner from "./components/OfflineBanner.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
+import { TourAutoStartGate, TourProvider, TourReplayButton } from "./tour/Tour.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import DocumentEditor from "./pages/DocumentEditor.jsx";
 import Calendar from "./pages/Calendar.jsx";
@@ -40,35 +41,39 @@ export default function App() {
 
   return (
     <div className="app">
-      <OfflineBanner />
-      <ThemeToggle />
-      <Routes>
-        <Route
-          path="/login"
-          element={user ? <Navigate to="/" replace /> : <Login />}
-        />
-        <Route
-          path="/signup"
-          element={user ? <Navigate to="/" replace /> : <Signup />}
-        />
-
-        {PROTECTED.map(([path, Page]) => (
+      <TourProvider>
+        <OfflineBanner />
+        <ThemeToggle />
+        <Routes>
           <Route
-            key={path}
-            path={path}
-            element={
-              <RequireAuth>
-                <Page />
-              </RequireAuth>
-            }
+            path="/login"
+            element={user ? <Navigate to="/" replace /> : <Login />}
           />
-        ))}
+          <Route
+            path="/signup"
+            element={user ? <Navigate to="/" replace /> : <Signup />}
+          />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {PROTECTED.map(([path, Page]) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RequireAuth>
+                  <Page />
+                </RequireAuth>
+              }
+            />
+          ))}
 
-      {user && <InstallPrompt />}
-      {user && <BottomNav />}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+
+        {user && <InstallPrompt />}
+        {user && <BottomNav />}
+        {user && <TourReplayButton />}
+        <TourAutoStartGate />
+      </TourProvider>
     </div>
   );
 }

@@ -33,3 +33,6 @@ backend/media/
 R2 cloudflare details.txt
 *credentials*.txt
 *secrets*.txt
+
+# Loop Engineering context docs (local agent memory)
+docs/loop/
