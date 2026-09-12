@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import JobFeed from '../components/JobFeed.jsx'
 import JobCard from '../components/JobCard.jsx'
 import LogApplication from '../components/LogApplication.jsx'
 
@@ -129,6 +130,8 @@ export default function Jobs() {
   const navigate = useNavigate()
   const [jobs, setJobs] = useState([])
   const [resume, setResume] = useState(null)
+  // What is typed in the feed search box also filters the jobs you added.
+  const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
 
@@ -158,6 +161,13 @@ export default function Jobs() {
     }
   }
 
+  const needle = search.trim().toLowerCase()
+  const shownJobs = needle
+    ? jobs.filter((job) =>
+        `${job.title} ${job.company.name} ${job.location || ''}`.toLowerCase().includes(needle),
+      )
+    : jobs
+
   return (
     <main className="page">
       <div className="page-header">
@@ -170,6 +180,8 @@ export default function Jobs() {
           generation are both built on it. <Link to="/profile">Go to Profile →</Link>
         </div>
       )}
+
+      <JobFeed onSearchChange={setSearch} />
 
       <AddJob onAdded={onAdded} />
       <LogApplication />
@@ -188,7 +200,10 @@ export default function Jobs() {
       )}
 
       {jobs.length > 0 && <h2 className="section-title">Your jobs</h2>}
-      {jobs.map((job) => (
+      {jobs.length > 0 && shownJobs.length === 0 && (
+        <p className="fine-print">None of the jobs you added match “{search.trim()}”.</p>
+      )}
+      {shownJobs.map((job) => (
         <JobCard key={job.id} job={job} onToggleSave={toggleSave} />
       ))}
     </main>

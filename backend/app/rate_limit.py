@@ -145,6 +145,8 @@ refresh_rate_limit = RateLimit("refresh", max_requests=60, window_seconds=3600)
 # Each forgot-password request can send an email, so it is kept tight.
 forgot_password_rate_limit = RateLimit("forgot_password", max_requests=5, window_seconds=3600)
 reset_password_rate_limit = RateLimit("reset_password", max_requests=10, window_seconds=3600)
+# Cached searches cost nothing, but uncached ones spend the Adzuna quota.
+feed_rate_limit = RateLimit("feed", max_requests=120, window_seconds=3600)
 
 # Every AI call spends real money. An unlimited scoring endpoint is a way for a
 # logged-in user - or a stolen token - to run up the bill.
@@ -166,6 +168,7 @@ def reset_all() -> None:
         refresh_rate_limit,
         forgot_password_rate_limit,
         reset_password_rate_limit,
+        feed_rate_limit,
         ai_rate_limit,
     ):
         limiter._local._hits.clear()

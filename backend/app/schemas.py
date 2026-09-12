@@ -223,6 +223,15 @@ class SavedJobOut(BaseModel):
     saved_at: datetime
 
 
+class JobFeedOut(BaseModel):
+    jobs: list[JobOut]
+    page: int
+    has_more: bool
+    # Which sources answered this search. Empty means the live search failed.
+    sources: list[str]
+    notice: str | None = None
+
+
 # --- Match analysis ------------------------------------------------------
 
 

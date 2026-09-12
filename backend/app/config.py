@@ -51,10 +51,16 @@ class Settings(BaseSettings):
     password_reset_expire_minutes: int = 30
 
     # --- Job sources ---
-    # There are none. Jobs enter the system only when a user pastes a link to
-    # one, which is why this project costs nothing to run. Every job-board API
-    # worth using is paid, partner-only, or forbids the scraping that would
-    # replace it.
+    # Every source is free. Adzuna needs a free developer key and allows 2,500
+    # calls a month; Himalayas needs no key. Without Adzuna keys the feed runs
+    # on Himalayas alone. See "Where jobs come from" in CLAUDE.md.
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+    # Two-letter market code, used by both sources.
+    job_country: str = "ca"
+    # Identical searches are answered from memory for this long, which is what
+    # keeps Adzuna inside its quota. 0 disables the cache.
+    feed_cache_minutes: int = 180
 
     # --- Gemini (free tier) ---
     # Server-side only; the key never reaches the browser.
@@ -93,6 +99,18 @@ class Settings(BaseSettings):
     @property
     def email_enabled(self) -> bool:
         return bool(self.smtp_host)
+
+    @property
+    def adzuna_enabled(self) -> bool:
+        return bool(self.adzuna_app_id and self.adzuna_app_key)
+
+    @field_validator("job_country", mode="before")
+    @classmethod
+    def _country_code(cls, v):
+        code = str(v or "").strip().lower()
+        if len(code) != 2 or not code.isalpha():
+            raise ValueError("JOB_COUNTRY must be a two-letter country code, e.g. ca")
+        return code
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -187,6 +205,11 @@ class Settings(BaseSettings):
             warnings.append(
                 "SMTP_HOST is unset: forgot-password emails cannot be sent, so anyone who "
                 "forgets their password is locked out. Reset links are never logged here."
+            )
+        if not self.adzuna_enabled:
+            warnings.append(
+                "ADZUNA_APP_ID / ADZUNA_APP_KEY are unset: the job feed runs on Himalayas "
+                "alone, which lists remote roles only."
             )
         if not self.redis_url:
             warnings.append(
