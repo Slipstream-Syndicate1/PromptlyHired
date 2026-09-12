@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import auth, documents, jobs, profile, resumes, saved
+from app.routers import applications, auth, documents, jobs, profile, resumes, saved
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -92,6 +92,8 @@ app.include_router(saved.router)
 app.include_router(profile.router)
 app.include_router(resumes.router)
 app.include_router(documents.router)
+app.include_router(applications.router)
+app.include_router(applications.communications_router)
 
 
 # Dev-only: in production these are served straight from the S3/R2 bucket.
