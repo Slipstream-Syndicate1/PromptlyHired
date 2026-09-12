@@ -66,6 +66,21 @@ for path in ["backend/app/services/notifications.py", "backend/app/services/push
              "frontend/src/pages/Applications.jsx", "frontend/src/pages/Analytics.jsx"]:
     ck("removed", f"{path} deleted", not (ROOT / path).exists())
 
+head("Forgot password")
+auth_router = read("backend/app/routers/auth.py")
+ck("reset", "forgot-password endpoint", '"/forgot-password"' in auth_router)
+ck("reset", "reset-password endpoint", '"/reset-password"' in auth_router)
+ck("reset", "both rate limited",
+   "forgot_password_rate_limit" in auth_router and "reset_password_rate_limit" in auth_router)
+ck("reset", "reset signs out every session", "RefreshToken.user_id == user.id" in auth_router)
+ck("reset", "email sent after the response", "background.add_task" in auth_router)
+ck("reset", "only token hashes stored",
+   "class PasswordResetToken(" in models and "token_hash" in models)
+ck("reset", "production never logs the link", "is_production" in read("backend/app/services/email.py"))
+ck("reset", "reset pages exist", all((ROOT / f).exists() for f in (
+    "frontend/src/pages/ForgotPassword.jsx", "frontend/src/pages/ResetPassword.jsx")))
+ck("reset", "sign-in page links to it", "/forgot-password" in read("frontend/src/pages/Login.jsx"))
+
 head("History is derived, not stored")
 ck("history", "no History table", "class History" not in models)
 documents_router = read("backend/app/routers/documents.py")

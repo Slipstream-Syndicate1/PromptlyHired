@@ -4,11 +4,13 @@ import InstallPrompt from './components/InstallPrompt.jsx'
 import OfflineBanner from './components/OfflineBanner.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import DocumentEditor from './pages/DocumentEditor.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
 import History from './pages/History.jsx'
 import JobDetail from './pages/JobDetail.jsx'
 import Jobs from './pages/Jobs.jsx'
 import Login from './pages/Login.jsx'
 import Profile from './pages/Profile.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
 import SavedJobs from './pages/SavedJobs.jsx'
 import Signup from './pages/Signup.jsx'
 
@@ -39,6 +41,12 @@ export default function App() {
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup />} />
+        <Route
+          path="/forgot-password"
+          element={user ? <Navigate to="/" replace /> : <ForgotPassword />}
+        />
+        {/* Reachable signed in or out, so a reset link is never swallowed by a redirect. */}
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {PROTECTED.map(([path, Page]) => (
           <Route

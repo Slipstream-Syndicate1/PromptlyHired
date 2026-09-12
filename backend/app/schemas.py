@@ -79,6 +79,16 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=1, max_length=512)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    # Same bounds as sign-up: 72 bytes is the bcrypt limit.
+    password: str = Field(min_length=8, max_length=72)
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

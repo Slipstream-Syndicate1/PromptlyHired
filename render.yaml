@@ -55,3 +55,15 @@ services:
         sync: false
       - key: S3_PUBLIC_BASE_URL
         sync: false
+      # Password reset emails. Without these, production cannot send reset
+      # links at all - they are never written to the logs there.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false

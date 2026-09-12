@@ -52,6 +52,10 @@ export default function Login() {
           />
         </label>
 
+        <p className="fine-print" style={{ marginTop: -4, textAlign: 'right' }}>
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
+
         <button className="btn primary block" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>

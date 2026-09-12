@@ -160,6 +160,12 @@ export const api = {
     return done
   },
   me: () => request('/api/auth/me'),
+  // Resolves the same way whether or not the email is registered.
+  forgotPassword: (email) =>
+    request('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  // Returns a token pair: a successful reset also signs you in.
+  resetPassword: (token, password) =>
+    request('/api/auth/reset-password', { method: 'POST', body: { token, password } }),
 
   // --- Jobs (added by pasting a link; there is no feed) ---
   listJobs: () => request('/api/jobs'),
