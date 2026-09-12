@@ -239,6 +239,19 @@ def _load_job(db, job_id: int) -> Job:
     return job
 
 
+def require_description(job: Job) -> None:
+    """Refuse before spending quota. Jobs logged by hand as applications have no
+    advert, and scoring or tailoring against an empty one returns junk."""
+    if not (job.description or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "This job has no advert text to work from. Paste the advert on the "
+                "Jobs page to match against it or tailor documents to it."
+            ),
+        )
+
+
 @router.get("/{job_id}", response_model=JobDetailOut)
 def get_job(job_id: int, user: CurrentUser, db: DbSession) -> JobDetailOut:
     """Job detail with a cached match if one exists. Never scores on its own."""
@@ -263,10 +276,14 @@ def get_job(job_id: int, user: CurrentUser, db: DbSession) -> JobDetailOut:
         )
     )
 
+    # Imported here, not at the top: the applications router imports this module.
+    from app.routers.applications import application_for_job
+
     return JobDetailOut(
         job=decorate_jobs(db, user, [job])[0],
         match=JobMatchOut.model_validate(match) if match else None,
         documents=[GeneratedDocumentOut.model_validate(d) for d in documents],
+        application=application_for_job(db, user, job.id),
     )
 
 
@@ -283,6 +300,7 @@ def analyze_job(
 ) -> JobMatch:
     """Score this job against the active resume. Cached per (user, job, resume)."""
     job = _load_job(db, job_id)
+    require_description(job)
     resume = require_active_resume(db, user)
 
     existing = db.scalar(

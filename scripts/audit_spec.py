@@ -58,13 +58,59 @@ for cls, fields in FIELDS.items():
         ck("model", f"{cls}.{f}", f"{f}:" in body)
 
 head("Removed tracker domain stays removed")
-for gone in ["ApplicationStatus", "ApplicationEvent", "class Follow(", "NotifiedJob",
-             "PushSubscription", "JobPreferences"]:
+# Application tracking was brought back (see "Application tracking" below).
+# The rest of the old tracker domain stays gone.
+for gone in ["class Follow(", "NotifiedJob", "PushSubscription", "JobPreferences"]:
     ck("removed", f"no {gone.rstrip('(')}", gone not in models)
 for path in ["backend/app/services/notifications.py", "backend/app/services/push.py",
              "backend/app/services/reminders.py", "backend/app/services/analytics.py",
              "frontend/src/pages/Applications.jsx", "frontend/src/pages/Analytics.jsx"]:
     ck("removed", f"{path} deleted", not (ROOT / path).exists())
+
+head("Application tracking")
+TRACKING_FIELDS = {
+    "Application": ["user_id", "job_id", "resume_id", "status", "applied_date",
+                    "status_updated_at", "notes", "next_action", "next_action_date"],
+    "ApplicationEvent": ["application_id", "from_status", "to_status", "changed_at", "note"],
+    "Communication": ["application_id", "kind", "direction", "occurred_at",
+                      "contact_name", "subject", "summary"],
+}
+for cls, fields in TRACKING_FIELDS.items():
+    m = re.search(rf"class {cls}\(Base\):(.*?)(?=\nclass |\Z)", models, re.S)
+    body = m.group(1) if m else ""
+    ck("tracking", f"{cls} exists", bool(m))
+    for f in fields:
+        ck("tracking", f"{cls}.{f}", f"{f}:" in body)
+ck("tracking", "stages include applied, interview, offer, rejected",
+   all(f'{stage} = "{stage}"' in models for stage in ("applied", "interview", "offer", "rejected")))
+ck("tracking", "deleting a CV keeps the application",
+   'ForeignKey("resumes.id", ondelete="SET NULL")' in models)
+
+apps_router = read("backend/app/routers/applications.py")
+for route in ('prefix="/api/applications"', 'prefix="/api/communications"', '"/stats"',
+              '"/{application_id}/events"', '"/{application_id}/communications"'):
+    ck("tracking", f"route {route}", route in apps_router)
+ck("tracking", "scoped to the signed-in user", "Application.user_id == user.id" in apps_router)
+ck("tracking", "status changes recorded as events", "ApplicationEvent(from_status=" in apps_router)
+ck("tracking", "follow-ups flagged", "needs_follow_up" in apps_router)
+main_py = read("backend/app/main.py")
+ck("tracking", "routers registered",
+   "applications.router" in main_py and "applications.communications_router" in main_py)
+
+ck("tracking", "manual links must be http(s)", "_http_url" in read("backend/app/schemas.py"))
+ck("tracking", "no model call for a job with no advert",
+   "require_description(job)" in read("backend/app/routers/jobs.py")
+   and "require_description(job)" in read("backend/app/routers/documents.py"))
+
+client_js = read("frontend/src/api/client.js")
+for fn in ("listApplications", "applicationStats", "createApplication", "updateApplication",
+           "applicationEvents", "listCommunications", "addCommunication"):
+    ck("tracking", f"api.{fn}", f"{fn}:" in client_js)
+for path in ("frontend/src/components/ApplicationPanel.jsx",
+             "frontend/src/components/LogApplication.jsx",
+             "frontend/src/lib/applicationStatus.js",
+             "backend/tests/test_applications.py"):
+    ck("tracking", f"{path} exists", (ROOT / path).exists())
 
 head("History is derived, not stored")
 ck("history", "no History table", "class History" not in models)

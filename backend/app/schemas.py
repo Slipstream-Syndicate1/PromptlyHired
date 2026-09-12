@@ -10,9 +10,15 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.models import DocumentKind, JobType
+from app.models import (
+    ApplicationStatus,
+    CommunicationDirection,
+    CommunicationKind,
+    DocumentKind,
+    JobType,
+)
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -227,6 +233,8 @@ class JobDetailOut(BaseModel):
     job: JobOut
     match: JobMatchOut | None = None
     documents: list[GeneratedDocumentOut] = Field(default_factory=list)
+    # The user's tracked application for this job, if any.
+    application: ApplicationOut | None = None
 
 
 # --- Generated documents -------------------------------------------------
@@ -268,4 +276,174 @@ class HistoryEntryOut(BaseModel):
     last_generated_at: datetime
 
 
+# --- Applications ---------------------------------------------------------
+
+_HTTP_URL = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def _http_url(value: str | None) -> str | None:
+    """Only http(s). The link is rendered as the Apply button's href, so a
+    javascript: URL stored here would run in the browser of whoever clicks it."""
+    value = clean_text(value)
+    if value is not None and not _HTTP_URL.match(value):
+        raise ValueError("Link must start with http:// or https://")
+    return value
+
+
+class ApplicationCreate(BaseModel):
+    """Track an application: either for a job already in the app (job_id), or a
+    manual entry (company + position) for one applied to elsewhere."""
+
+    job_id: int | None = None
+    company: str | None = Field(default=None, max_length=200)
+    position: str | None = Field(default=None, max_length=300)
+    url: str | None = Field(default=None, max_length=2048)
+    location: str | None = Field(default=None, max_length=255)
+
+    status: ApplicationStatus = ApplicationStatus.applied
+    applied_date: date | None = None
+    notes: str | None = Field(default=None, max_length=10_000)
+    next_action: str | None = Field(default=None, max_length=255)
+    next_action_date: date | None = None
+    resume_id: int | None = None
+
+    @field_validator("company", "position", "location", "notes", "next_action")
+    @classmethod
+    def _clean(cls, v: str | None) -> str | None:
+        return clean_text(v)
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str | None) -> str | None:
+        return _http_url(v)
+
+    @model_validator(mode="after")
+    def _job_or_manual(self) -> ApplicationCreate:
+        manual = self.company is not None or self.position is not None
+        if self.job_id is not None and manual:
+            raise ValueError("Give either job_id or company and position, not both.")
+        if self.job_id is None and not (self.company and self.position):
+            raise ValueError("Give job_id, or company and position for a manual entry.")
+        return self
+
+
+class ApplicationUpdate(BaseModel):
+    status: ApplicationStatus | None = None
+    # What caused a status change, e.g. "Invited to interview by email".
+    # Stored on the ApplicationEvent, so it only makes sense with a change.
+    note: str | None = Field(default=None, max_length=2000)
+    applied_date: date | None = None
+    notes: str | None = Field(default=None, max_length=10_000)
+    next_action: str | None = Field(default=None, max_length=255)
+    next_action_date: date | None = None
+    resume_id: int | None = None
+
+    @field_validator("note", "notes", "next_action")
+    @classmethod
+    def _clean(cls, v: str | None) -> str | None:
+        return clean_text(v)
+
+    @model_validator(mode="after")
+    def _required_fields_stay_set(self) -> ApplicationUpdate:
+        for name in ("status", "applied_date"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be cleared.")
+        return self
+
+
+class ApplicationEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    from_status: ApplicationStatus | None = None
+    to_status: ApplicationStatus
+    changed_at: datetime
+    note: str | None = None
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job: JobOut
+    status: ApplicationStatus
+    applied_date: date
+    status_updated_at: datetime
+    notes: str | None = None
+    next_action: str | None = None
+    next_action_date: date | None = None
+    resume_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    days_since_update: int = 0
+    # Still waiting on the employer and either past its next-action date or
+    # quiet for too long. Drives follow-up reminders.
+    needs_follow_up: bool = False
+    communications_count: int = 0
+
+
+class ApplicationStats(BaseModel):
+    """Figures for the Dashboard cards, computed in one query."""
+
+    total: int
+    by_status: dict[str, int]
+    active: int
+    offers: int
+    needs_follow_up: int
+    # Share of applications (excluding withdrawn) that got past "applied".
+    # Null when there is nothing to divide by, rather than a misleading 0%.
+    response_rate_pct: int | None = None
+
+
+class CommunicationCreate(BaseModel):
+    kind: CommunicationKind
+    direction: CommunicationDirection
+    # Defaults to now, for logging something as it happens.
+    occurred_at: datetime | None = None
+    contact_name: str | None = Field(default=None, max_length=200)
+    subject: str | None = Field(default=None, max_length=300)
+    summary: str | None = Field(default=None, max_length=10_000)
+
+    @field_validator("contact_name", "subject", "summary")
+    @classmethod
+    def _clean(cls, v: str | None) -> str | None:
+        return clean_text(v)
+
+
+class CommunicationUpdate(BaseModel):
+    kind: CommunicationKind | None = None
+    direction: CommunicationDirection | None = None
+    occurred_at: datetime | None = None
+    contact_name: str | None = Field(default=None, max_length=200)
+    subject: str | None = Field(default=None, max_length=300)
+    summary: str | None = Field(default=None, max_length=10_000)
+
+    @field_validator("contact_name", "subject", "summary")
+    @classmethod
+    def _clean(cls, v: str | None) -> str | None:
+        return clean_text(v)
+
+    @model_validator(mode="after")
+    def _required_fields_stay_set(self) -> CommunicationUpdate:
+        for name in ("kind", "direction", "occurred_at"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be cleared.")
+        return self
+
+
+class CommunicationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    application_id: int
+    kind: CommunicationKind
+    direction: CommunicationDirection
+    occurred_at: datetime
+    contact_name: str | None = None
+    subject: str | None = None
+    summary: str | None = None
+    created_at: datetime
+
+
+# JobDetailOut refers to GeneratedDocumentOut and ApplicationOut, both defined
+# after it. Rebuilt once, here, where every name it needs exists.
 JobDetailOut.model_rebuild()

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import JobCard from '../components/JobCard.jsx'
+import LogApplication from '../components/LogApplication.jsx'
 
 /**
  * The main page. There is no job feed: every job-board API is paid,
@@ -171,6 +172,7 @@ export default function Jobs() {
       )}
 
       <AddJob onAdded={onAdded} />
+      <LogApplication />
 
       {error && <div className="alert error">{error}</div>}
       {busy && <div className="empty">Loading…</div>}
