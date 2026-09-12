@@ -303,3 +303,42 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class CalendarEvent(Base):
+    __tablename__ = 'calendar_events'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey('jobs.id', ondelete='SET NULL'))
+    title: Mapped[str] = mapped_column(String(250))
+    date: Mapped[date] = mapped_column(Date)
+    time: Mapped[str] = mapped_column(String(5), default='')
+    type: Mapped[str] = mapped_column(String(20))
+    notes: Mapped[str] = mapped_column(Text, default='')
+    timezone: Mapped[str] = mapped_column(String(100))
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class InterviewPrep(Base):
+    __tablename__ = 'interview_preps'
+    __table_args__ = (UniqueConstraint('user_id', 'request_id', name='uq_prep_request'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey('calendar_events.id', ondelete='CASCADE'), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    source_fingerprint: Mapped[str] = mapped_column(String(64))
+    settings: Mapped[dict] = mapped_column(JSONB)
+    content: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PrepMessage(Base):
+    __tablename__ = 'prep_messages'
+    __table_args__ = (UniqueConstraint('plan_id', 'request_id', 'role', name='uq_prep_message_request'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(ForeignKey('interview_preps.id', ondelete='CASCADE'), index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    role: Mapped[str] = mapped_column(String(12))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

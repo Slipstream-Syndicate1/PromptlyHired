@@ -193,6 +193,16 @@ export const api = {
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
   history: () => request('/api/history'),
 
+  // --- Calendar and interview preparation ---
+  listCalendarEvents: () => request('/api/calendar'),
+  createCalendarEvent: (payload) => request('/api/calendar', { method: 'POST', body: payload }),
+  updateCalendarEvent: (id, payload) => request(`/api/calendar/${encodeURIComponent(id)}`, { method: 'PATCH', body: payload }),
+  deleteCalendarEvent: (id) => request(`/api/calendar/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getInterviewPrep: (id) => request(`/api/interviews/${encodeURIComponent(id)}/prep`),
+  generateInterviewPrep: (id, payload) => request(`/api/interviews/${encodeURIComponent(id)}/prep`, { method: 'POST', body: payload }),
+  setPrepTaskCompleted: (planId, taskId, completed) => request(`/api/interview-prep/${encodeURIComponent(planId)}/tasks/${encodeURIComponent(taskId)}`, { method: 'PATCH', body: { completed } }),
+  sendPrepMessage: (planId, payload) => request(`/api/interview-prep/${encodeURIComponent(planId)}/messages`, { method: 'POST', body: payload }),
+
   // --- Profile ---
   getProfile: () => request('/api/profile'),
   updateProfile: (payload) => request('/api/profile', { method: 'PATCH', body: payload }),

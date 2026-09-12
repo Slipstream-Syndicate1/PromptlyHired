@@ -16,12 +16,8 @@ export function loadCalendarEvents() {
   }
 }
 
-export function saveCalendarEvents(events) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
-  } catch {
-    // Keep the current session usable in private browsing mode.
-  }
+export function clearLegacyCalendarEvents() {
+  localStorage.removeItem(STORAGE_KEY)
 }
 
 export function eventTypeLabel(type) {

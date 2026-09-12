@@ -1,66 +1,42 @@
-# Interview preparation integration handoff
+# Calendar → interview preparation
 
-## Current status
+## Integration
 
-The backend scheduling/AI service and frontend setup/checklist/chat components are implemented and independently tested. They are **not exposed as a working website feature yet**. The canonical tracker/calendar records are absent from this branch. No duplicate calendar model, mock production tracker, persistence table, or public generation endpoint has been added.
+The calendar UI is the entry point while application status tracking is not yet available. Calendar events are account-owned API records. Interview events link to an existing job; job ownership is checked server-side through UserJob. The date, time, and timezone belong to the calendar event.
 
-## Calendar/tracker owner supplies
+From Calendar, create an Interview event, select the job, supply its time, and choose Prepare with AI. The protected route `/interviews/:interviewId/prep` loads the authorized event and existing plan without generating anything. The user chooses technical, behavioral, or not sure (both), plus daily minutes, then explicitly generates a plan. Same-day interviews require actual available minutes before the interview.
 
-Implement `InterviewContextAdapter.get_interview_context(user_id=..., interview_id=...)` from `backend/app/services/interview_prep.py`. Return `InterviewContext` from `backend/app/interview_prep_schemas.py`, resolving the canonical interview and verifying application ownership server-side. Use `status='interview'` only for active interview applications; IDs and schedule revision are strings at this boundary. Supply timezone-aware `starts_at`, IANA `timezone`, title/company/description, and optional active resume/cached match summary. The authoritative calendar retains ownership of interview date/type and revision.
+Editing the calendar event can make a saved plan outdated. The user chooses when to regenerate; previous plan versions remain stored. Checklist changes and interview-specific messages persist server-side. No email, application-status update, calendar-task creation, or web search occurs through chat.
 
-Mount the CTA after the tracker successfully saves a status change:
+## Existing browser events
 
-```jsx
-<InterviewPrepCTA
-  status={application.status}
-  startsAt={interview?.startsAt}
-  hasPlan={Boolean(prep)}
-  onSchedule={openCalendarScheduling}
-  onOpen={openPreparation}
-/>
-```
+The previous calendar used one browser-wide localStorage key without an account owner. These records are not automatically imported. The calendar offers an explicit import action; new records use the authenticated account. Unlinked or untimed interview imports must be completed before preparation. Existing job descriptions and resumes stay backend-owned inputs, never trusted from the browser request.
 
-Import from `frontend/src/components/interview-prep/InterviewPrepCTA.jsx`. Normalize the canonical tracker status to lowercase `interview` in the integration layer. The CTA performs no model call.
+## Files
 
-## Preparation owner completes after the records are available
+- `frontend/src/pages/Calendar.jsx`: calendar CRUD, import, job selection, preparation links.
+- `frontend/src/pages/InterviewPrep.jsx`: authorized loading, error/retry, API bindings.
+- `frontend/src/components/interview-prep/`: setup, checklist, chat, responsive theme-aware styling.
+- `frontend/src/api/client.js`: authenticated calendar/preparation calls.
+- `backend/app/services/interview_prep.py`: deterministic scheduling and structured AI plan/chat services.
+- `backend/app/interview_prep_schemas.py`: service contracts.
+- Backend calendar/preparation routes and models own persistence, authorization, revision checks, and request deduplication.
 
-1. Add the plan/version/task/message tables and migration against the agreed interview ID.
-2. Add authenticated routes described in `docs/plans/interview-preparation.md`. Enforce ownership, idempotency, rate limits, and calendar revision checks before/after generation. Ordinary GET and checklist updates never call AI. Store chat and checkbox changes in Postgres.
-3. Call `generate_plan(context, PrepSettings(...))` and `answer_question(context, plan, message, history)` through those routes. Catch `AIRateLimited` before `AIError`; return 429, 503 for missing key, and 502 for provider/validation failure. All calls stay server-side.
-4. Map persisted service output into the frontend presentation contract below. Register the authenticated route `/interviews/:interviewId/prep` and add API methods to the existing client. Do not expose a route that accepts an arbitrary browser-supplied InterviewContext as proof of ownership.
-5. Run Postgres integration tests and the complete status → calendar → preparation → refresh flow.
+## Future tracker integration
 
-## Frontend workspace contract
+When application stages are added, persist the stage first, then show the existing InterviewPrepCTA for the interview stage. Its `onSchedule` should open the calendar form for that job, and `onOpen` should navigate to `/interviews/{eventId}/prep`. There is no separate preparation calendar. Multiple interview events can link to the same job and retain separate preparation histories.
 
-Import `InterviewPrep` from `frontend/src/components/interview-prep/InterviewPrep.jsx`. It includes its scoped theme-aware stylesheet. Mount it within the existing page shell; use `key={`${userId}:${interviewId}`}` so switching interviews/accounts discards old UI state. Load saved state before mounting. On calendar revision changes, reload/remount it with the current context and outdated flag.
-
-```js
-const context = {
-  id: 'interview-id', title: 'Backend Engineer', company: 'Acme',
-  startsAt: '2030-05-20T16:00:00Z', timezone: 'America/Edmonton',
-  interviewType: 'not_sure', hasResume: true,
-}
-```
-
-`initialPlan` is null or `{ id, outdated, dailyMinutes, summary, hasMoreDays, tasks, messages }`. Preserve service `summary` and map `has_more_days` to `hasMoreDays` so the user sees when the plan covers only an initial window. Flatten service `days` into tasks: `{ ...task, date: day.date, outcome: task.expected_outcome }`. Each task retains the persisted server ID and boolean completed state. Messages are `{ id, role, content }` with role user/assistant. Populate the latest conversation page initially; pagination UI is a follow-up when persistence lands.
-
-Required async `actions`:
-
-- `generate({ daily_minutes, interview_type, same_day_minutes?, regenerate, client_request_id })` returns the persisted frontend plan shape. Same-day input is actual available minutes. Strip transport-only fields before constructing PrepSettings; update canonical interview type through its owner if necessary.
-- `setCompleted(planId, taskId, completed)` persists the checkbox or throws. The UI rolls back a failed save.
-- `sendMessage(planId, { message, client_request_id })` persists both messages and returns `{ id, role: 'assistant', content }`. Map service `answer` to stored assistant content. The UI retains a failed draft and reuses the request ID for retry.
-
-Render all content as text, not raw HTML. The current workspace never changes calendar records or silently regenerates. New plan IDs reset the chat display; old versions stay server-side.
-
-## Verification
+## Local verification
 
 ```bash
-# From frontend
+# backend
+source .venv/bin/activate
+python -m alembic upgrade head
+python -m pytest
+
+# frontend, separate terminal
 npm test
 npm run build
-
-# From backend; these tests use stubbed AI and do not require Postgres
-.venv/bin/python -m pytest unit_tests/test_interview_prep_schedule.py -q
 ```
 
-A frontend build alone does not demonstrate live integration: the components are not imported by a production route until the calendar contract is connected. No live Gemini requests were made during these tests.
+Backend tests use a dedicated disposable Postgres database and stub AI. The existing development database must not be used as the test database. A live Gemini smoke test is separate from the deterministic suite and requires a configured key; never print the key or commit `.env`.

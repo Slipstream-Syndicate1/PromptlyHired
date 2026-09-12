@@ -6,6 +6,7 @@ import ThemeToggle from "./components/ThemeToggle.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import DocumentEditor from "./pages/DocumentEditor.jsx";
+import InterviewPrepPage from "./pages/InterviewPrep.jsx";
 import Calendar from "./pages/Calendar.jsx";
 import History from "./pages/History.jsx";
 import JobDetail from "./pages/JobDetail.jsx";
@@ -29,6 +30,7 @@ const PROTECTED = [
   ["/jobs", Jobs],
   ["/jobs/:jobId", JobDetail],
   ["/calendar", Calendar],
+  ["/interviews/:interviewId/prep", InterviewPrepPage],
   ["/saved", SavedJobs],
   ["/history", History],
   ["/documents/:documentId", DocumentEditor],

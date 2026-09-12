@@ -6,8 +6,27 @@ import {
   eventTypeShortLabel,
   formatEventDate,
   loadCalendarEvents,
-  saveCalendarEvents,
+  clearLegacyCalendarEvents,
 } from "../lib/calendarStore.js";
+
+import { api } from "../api/client.js";
+import { useAuth } from "../context/AuthContext.jsx";
+
+function useCalendar() {
+  const { user } = useAuth();
+  const [state, setState] = useState({ account: null, events: [], loading: true, error: "" });
+  useEffect(() => {
+    let active = true;
+    setState({ account: user?.id, events: [], loading: true, error: "" });
+    if (!user) return;
+    api.listCalendarEvents().then(events => {
+      if (active) setState({ account: user.id, events, loading: false, error: "" });
+    }).catch(err => { if (active) setState({ account: user.id, events: [], loading: false, error: err.message }); });
+    return () => { active = false; };
+  }, [user?.id]);
+  const setEvents = update => setState(current => ({...current, events: typeof update === "function" ? update(current.events) : update }));
+  return { ...state, events: state.account === user?.id ? state.events : [], setEvents };
+}
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TYPE_COLORS = {
@@ -67,18 +86,13 @@ function EventPill({ event }) {
 
 export function CalendarPreview() {
   const [month] = useState(() => monthStart(new Date()));
-  const [events, setEvents] = useState(loadCalendarEvents);
+  const { events, setEvents, loading, error: loadError } = useCalendar();
   const days = useMemo(() => calendarDays(month), [month]);
   const upcoming = [...events]
     .filter((event) => event.date >= dateKey(new Date()))
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
     .slice(0, 3);
 
-  useEffect(() => {
-    const refresh = () => setEvents(loadCalendarEvents());
-    window.addEventListener("storage", refresh);
-    return () => window.removeEventListener("storage", refresh);
-  }, []);
 
   return (
     <section className="dashboard-calendar card" aria-label="Upcoming calendar">
@@ -116,7 +130,9 @@ export function CalendarPreview() {
         })}
       </div>
       <div className="dashboard-upcoming">
-        {upcoming.length === 0 ? (
+        {loading && <p>Loading calendar…</p>}
+        {loadError && <p role="alert">{loadError}</p>}
+        {loading || loadError ? null : upcoming.length === 0 ? (
           <p>No upcoming deadlines or interviews.</p>
         ) : (
           upcoming.map((event) => (
@@ -134,20 +150,24 @@ export function CalendarPreview() {
   );
 }
 
-function EventForm({ onAdd }) {
-  const [form, setForm] = useState({
+function EventForm({ onAdd, initial, onCancel, jobs, saving }) {
+  const [form, setForm] = useState(initial || {
     title: "",
     date: dateKey(new Date()),
     time: "",
     type: "deadline",
     notes: "",
+    job_id: "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
     if (!form.title.trim() || !form.date) return;
-    onAdd({ ...form, id: crypto.randomUUID(), title: form.title.trim() });
-    setForm((current) => ({ ...current, title: "", time: "", notes: "" }));
+    const saved = await onAdd({ title: form.title.trim(), date: form.date, time: form.time || null,
+      type: form.type, notes: form.notes || "", timezone: form.timezone,
+      job_id: form.type === "interview" && form.job_id ? Number(form.job_id) : null });
+    if (saved && !initial) setForm(current => ({...current, title: "", time: "", notes: ""}));
   };
 
   const update = (field) => (event) =>
@@ -158,7 +178,7 @@ function EventForm({ onAdd }) {
       <div className="calendar-form-heading">
         <div>
           <span className="calendar-kicker">Plan ahead</span>
-          <h2>Add an event</h2>
+          <h2>{initial ? "Edit event" : "Add an event"}</h2>
         </div>
         <div className="calendar-form-icon" aria-hidden="true">
           +
@@ -185,8 +205,8 @@ function EventForm({ onAdd }) {
           />
         </label>
         <label className="field">
-          <span>Time (optional)</span>
-          <input type="time" value={form.time} onChange={update("time")} />
+          <span>{form.type === "interview" ? "Time" : "Time (optional)"}</span>
+          <input type="time" value={form.time} onChange={update("time")} required={form.type === "interview"} />
         </label>
       </div>
       <label className="field">
@@ -199,6 +219,14 @@ function EventForm({ onAdd }) {
           ))}
         </select>
       </label>
+      <p className="muted">Timezone: {form.timezone}</p>
+      {form.type === "interview" && <label className="field">
+        <span>Linked job</span>
+        <select value={form.job_id || ""} onChange={update("job_id")} required>
+          <option value="">Select a job</option>
+          {jobs.map(job => <option key={job.id} value={job.id}>{job.title} · {job.company}</option>)}
+        </select>
+      </label>}
       <label className="field">
         <span>Notes (optional)</span>
         <textarea
@@ -209,18 +237,30 @@ function EventForm({ onAdd }) {
           maxLength={500}
         />
       </label>
-      <button className="btn primary block" type="submit">
-        Add to calendar
+      <button className="btn primary block" type="submit" disabled={saving}>
+        {saving ? "Saving…" : initial ? "Save event" : "Add to calendar"}
       </button>
+      {initial && <button type="button" className="btn" onClick={onCancel}>Cancel edit</button>}
     </form>
   );
 }
 
 export default function Calendar() {
   const [month, setMonth] = useState(() => monthStart(new Date()));
-  const [events, setEvents] = useState(loadCalendarEvents);
+  const { events, setEvents, loading, error: loadError } = useCalendar();
 
-  useEffect(() => saveCalendarEvents(events), [events]);
+  const { user } = useAuth();
+  const [jobs, setJobs] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [legacy, setLegacy] = useState(loadCalendarEvents);
+  useEffect(() => {
+    let active = true;
+    setJobs([]); setEditing(null); setError("");
+    api.listJobs().then(items => { if (active) setJobs(items); }).catch(err => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   const days = useMemo(() => calendarDays(month), [month]);
   const monthEvents = events.filter((event) => {
@@ -235,9 +275,31 @@ export default function Calendar() {
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
     .slice(0, 6);
 
-  const addEvent = (event) => setEvents((current) => [...current, event]);
-  const removeEvent = (id) =>
-    setEvents((current) => current.filter((event) => event.id !== id));
+  const addEvent = async (payload) => {
+    setSaving(true); setError("");
+    try {
+      const saved = editing ? await api.updateCalendarEvent(editing.id, payload) : await api.createCalendarEvent(payload);
+      setEvents(current => [...current.filter(item => item.id !== saved.id), saved]);
+      setEditing(null); return true;
+    } catch (err) { setError(err.message); return false; }
+    finally { setSaving(false); }
+  };
+  const removeEvent = async (id) => {
+    setSaving(true); setError("");
+    try { await api.deleteCalendarEvent(id); setEvents(current => current.filter(event => event.id !== id)); if (editing?.id === id) setEditing(null); }
+    catch (err) { setError(err.message); } finally { setSaving(false); }
+  };
+  const importEvents = async () => {
+    setSaving(true); setError("");
+    try {
+      for (const item of legacy) {
+        const saved = await api.createCalendarEvent({ id: item.id, title: item.title, date: item.date, time: item.time || null,
+          type: item.type, notes: item.notes || "", job_id: null, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+        setEvents(current => [...current.filter(event => event.id !== saved.id), saved]);
+      }
+      clearLegacyCalendarEvents(); setLegacy([]);
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  };
   const moveMonth = (amount) =>
     setMonth(
       (current) =>
@@ -258,6 +320,9 @@ export default function Calendar() {
         </Link>
       </div>
 
+      {loading && <p role="status">Loading calendar…</p>}
+      {(error || loadError) && <p role="alert">{error || loadError}</p>}
+      {legacy.length > 0 && <div className="card"><p>This browser has older calendar events. Import only if they belong to your account.</p><button className="btn" disabled={saving || loading || !!loadError} onClick={importEvents}>Import events from this browser</button></div>}
       <div className="calendar-layout">
         <section
           className="calendar-main card"
@@ -332,13 +397,13 @@ export default function Calendar() {
         </section>
 
         <aside className="calendar-side">
-          <EventForm onAdd={addEvent} />
+          <EventForm key={`${user?.id}-${editing?.id || "new"}`} onAdd={addEvent} initial={editing} onCancel={() => setEditing(null)} jobs={jobs} saving={saving || loading || !!loadError} />
           <section className="upcoming card">
             <div className="section-heading-row">
               <h2>Coming up</h2>
               <span>{upcoming.length}</span>
             </div>
-            {upcoming.length === 0 ? (
+            {loading || loadError ? null : upcoming.length === 0 ? (
               <p className="calendar-empty">
                 No upcoming events yet. Add a deadline, interview, or offer date
                 to stay on top of your search.
@@ -357,11 +422,14 @@ export default function Calendar() {
                         {event.time ? ` · ${event.time}` : ""}
                       </span>
                       <small>{eventTypeLabel(event.type)}</small>
+                      <button type="button" className="text-btn" disabled={saving} aria-label={`Edit ${event.title}`} onClick={() => setEditing(event)}>Edit</button>
+                      {event.type === "interview" && (event.job_id && event.starts_at ? <Link className="text-link" to={`/interviews/${event.id}/prep`}>Prepare with AI</Link> : <button className="text-btn" disabled={saving} onClick={() => setEditing(event)}>Complete interview details</button>)}
                     </div>
                     <button
                       type="button"
                       className="text-btn"
                       onClick={() => removeEvent(event.id)}
+                      disabled={saving}
                       aria-label={`Remove ${event.title}`}
                     >
                       ×
