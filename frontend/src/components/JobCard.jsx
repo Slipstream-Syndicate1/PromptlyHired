@@ -9,6 +9,13 @@ const JOB_TYPE_LABELS = {
   remote: 'Remote',
 }
 
+const STATUS_LABELS = {
+  applied: 'Applied',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+}
+
 function Logo({ company }) {
   if (company.logo_url) {
     return <img className="logo" src={company.logo_url} alt="" loading="lazy" />
@@ -24,7 +31,7 @@ function Logo({ company }) {
  * A feed card. Deliberately shows no match percentage: scoring is one API call
  * per job, so it happens when the user opens a card, not across the whole feed.
  */
-export default function JobCard({ job, onToggleSave, busy }) {
+export default function JobCard({ job, onToggleSave, onMarkApplied, busy }) {
   return (
     <article className="card">
       <div className="job-top">
@@ -59,6 +66,11 @@ export default function JobCard({ job, onToggleSave, busy }) {
           <span className="chip missing">△ {job.requirements_missing_count} missing</span>
         )}
         {job.has_documents && <span className="chip analysed">📄 Documents</span>}
+        {job.status && (
+          <Link className="chip tracking" to="/tracking">
+            🗂 {STATUS_LABELS[job.status] || job.status}
+          </Link>
+        )}
       </div>
 
       <div className="job-actions">
@@ -67,6 +79,12 @@ export default function JobCard({ job, onToggleSave, busy }) {
         <Link className="btn" to={`/jobs/${job.id}`}>
           View match
         </Link>
+
+        {onMarkApplied && !job.status && (
+          <button className="btn" disabled={busy} onClick={() => onMarkApplied(job)}>
+            Mark as applied
+          </button>
+        )}
 
         {onToggleSave && (
           <button

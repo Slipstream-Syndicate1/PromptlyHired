@@ -162,8 +162,9 @@ export default function DocumentEditor() {
   }
 
   const remove = async () => {
+    const jobId = doc.job_id
     await api.deleteDocument(documentId)
-    navigate('/history')
+    navigate(`/jobs/${jobId}`)
   }
 
   const isResume = doc?.kind === 'resume'
@@ -173,7 +174,7 @@ export default function DocumentEditor() {
     return (
       <main className="page">
         <div className="alert error">{error}</div>
-        <Link className="btn" to="/history">‹ History</Link>
+        <Link className="btn" to="/jobs">‹ Jobs</Link>
       </main>
     )
   }

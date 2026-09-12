@@ -27,6 +27,18 @@ export default function SavedJobs() {
     }
   }
 
+  const markApplied = async (job) => {
+    const previous = rows
+    setRows((r) => r.map((row) => (row.job.id === job.id ? { ...row, job: { ...row.job, status: 'applied' } } : row)))
+    try {
+      const updated = await api.setJobStatus(job.id, 'applied')
+      setRows((r) => r.map((row) => (row.job.id === job.id ? { ...row, job: updated } : row)))
+    } catch (err) {
+      setRows(previous)
+      setError(err.message)
+    }
+  }
+
   return (
     <main className="page">
       <div className="page-header">
@@ -46,7 +58,7 @@ export default function SavedJobs() {
       )}
 
       {rows.map((row) => (
-        <JobCard key={row.job.id} job={row.job} onToggleSave={unsave} />
+        <JobCard key={row.job.id} job={row.job} onToggleSave={unsave} onMarkApplied={markApplied} />
       ))}
     </main>
   )

@@ -4,6 +4,13 @@ import { api } from '../api/client'
 import ApplyLink from '../components/ApplyLink.jsx'
 import MatchPanel from '../components/MatchPanel.jsx'
 
+const STATUS_LABELS = {
+  applied: 'Applied',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+}
+
 export default function JobDetail() {
   const { jobId } = useParams()
   const navigate = useNavigate()
@@ -11,6 +18,7 @@ export default function JobDetail() {
   const [error, setError] = useState('')
   const [analysing, setAnalysing] = useState(false)
   const [generating, setGenerating] = useState(null)
+  const [tracking, setTracking] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -35,6 +43,19 @@ export default function JobDetail() {
       setError(err.message)
     } finally {
       setAnalysing(false)
+    }
+  }
+
+  const markApplied = async () => {
+    setTracking(true)
+    setError('')
+    try {
+      const job = await api.setJobStatus(jobId, 'applied')
+      setDetail((d) => ({ ...d, job }))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setTracking(false)
     }
   }
 
@@ -87,6 +108,15 @@ export default function JobDetail() {
         </div>
         <div className="job-actions">
           <ApplyLink job={job} />
+          {job.status ? (
+            <Link className="chip tracking" to="/tracking">
+              🗂 Tracking: {STATUS_LABELS[job.status] || job.status}
+            </Link>
+          ) : (
+            <button className="btn" disabled={tracking} onClick={markApplied}>
+              {tracking ? 'Marking…' : 'Mark as applied'}
+            </button>
+          )}
         </div>
       </div>
 

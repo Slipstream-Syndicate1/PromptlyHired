@@ -1,4 +1,4 @@
-"""Document generation, editing, and the History view derived from it."""
+"""Document generation and editing."""
 
 
 SAMPLE = (
@@ -128,50 +128,3 @@ def test_delete_document(client, with_resume, ai_stub):
     ).json()
     assert client.delete(f"/api/documents/{doc['id']}", headers=headers).status_code == 204
     assert client.get(f"/api/documents/{doc['id']}", headers=headers).status_code == 404
-
-
-# --- History --------------------------------------------------------------
-
-
-def test_history_is_empty_until_something_is_generated(client, with_resume):
-    headers, _ = with_resume()
-    assert client.get("/api/history", headers=headers).json() == []
-
-
-def test_history_groups_documents_by_job(client, with_resume, ai_stub):
-    headers, _ = with_resume()
-    job = _first_job(client, headers)
-    client.post(f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "resume"})
-    client.post(f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "cover_letter"})
-
-    history = client.get("/api/history", headers=headers).json()
-    assert len(history) == 1, "one entry per job, not per document"
-    entry = history[0]
-    assert entry["job"]["id"] == job["id"]
-    assert {d["kind"] for d in entry["documents"]} == {"resume", "cover_letter"}
-    # The apply link must survive into History - the user still needs to apply.
-    assert entry["job"]["url"]
-
-
-def test_history_covers_multiple_jobs_most_recent_first(client, with_resume, ai_stub):
-    headers, _ = with_resume()
-    jobs = [_first_job(client, headers, "Role A"), _first_job(client, headers, "Role B")]
-    for job in jobs:
-        client.post(f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "resume"})
-
-    history = client.get("/api/history", headers=headers).json()
-    assert len(history) == 2
-    assert history[0]["last_generated_at"] >= history[1]["last_generated_at"]
-
-
-def test_history_is_per_user(client, with_resume, auth, ai_stub):
-    headers, _ = with_resume()
-    job = _first_job(client, headers)
-    client.post(f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "resume"})
-
-    other, _, _ = auth()
-    assert client.get("/api/history", headers=other).json() == []
-
-
-def test_history_requires_auth(client):
-    assert client.get("/api/history").status_code == 401

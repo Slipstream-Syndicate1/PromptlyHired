@@ -12,7 +12,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.models import DocumentKind, JobType
+from app.models import ApplicationStatus, DocumentKind, JobType, NextEventType
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -199,6 +199,16 @@ class JobOut(BaseModel):
     requirements_met_count: int | None = None
     requirements_missing_count: int | None = None
 
+    # Tracking board state. Null until the user marks the job as applied.
+    status: ApplicationStatus | None = None
+    applied_at: datetime | None = None
+    status_updated_at: datetime | None = None
+
+    # The next thing coming up for this job - independent of status.
+    next_event_at: datetime | None = None
+    next_event_type: NextEventType | None = None
+    next_event_note: str | None = None
+
 
 class SavedJobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -262,10 +272,29 @@ class DocumentUpdate(BaseModel):
     edited_content: dict
 
 
-class HistoryEntryOut(BaseModel):
-    job: JobOut
-    documents: list[GeneratedDocumentOut]
-    last_generated_at: datetime
+# --- Application tracking -------------------------------------------------
+
+
+class ApplicationStatusUpdate(BaseModel):
+    """Move a job on the Tracking board, or clear its status (null) to stop
+    tracking it."""
+
+    status: ApplicationStatus | None = None
+
+
+class NextEventUpdate(BaseModel):
+    """The next thing coming up for this job - an interview, a deadline, or
+    a reminder. Setting `next_event_at` to null clears the event entirely,
+    regardless of what else is passed."""
+
+    next_event_at: datetime | None = None
+    next_event_type: NextEventType | None = None
+    next_event_note: str | None = Field(default=None, max_length=300)
+
+    @field_validator("next_event_note")
+    @classmethod
+    def _clean(cls, v: str | None) -> str | None:
+        return clean_text(v)
 
 
 JobDetailOut.model_rebuild()

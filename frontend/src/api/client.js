@@ -183,7 +183,7 @@ export const api = {
   updateSkillProfile: (id, payload) =>
     request(`/api/resumes/${id}/skill-profile`, { method: 'PATCH', body: payload }),
 
-  // --- Documents + history ---
+  // --- Documents ---
   generateDocument: (jobId, payload) =>
     request(`/api/jobs/${jobId}/documents`, { method: 'POST', body: payload }),
   getDocument: (id) => request(`/api/documents/${id}`),
@@ -191,7 +191,15 @@ export const api = {
     request(`/api/documents/${id}`, { method: 'PATCH', body: { edited_content } }),
   resetDocument: (id) => request(`/api/documents/${id}/reset`, { method: 'POST' }),
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
-  history: () => request('/api/history'),
+
+  // --- Tracking (Applied / Interview / Offer / Rejected) ---
+  tracking: () => request('/api/tracking'),
+  // status: null stops tracking the job (takes it off the board).
+  setJobStatus: (jobId, status) =>
+    request(`/api/tracking/${jobId}`, { method: 'PATCH', body: { status } }),
+  // next_event_at: null clears the event (and its type/note) entirely.
+  setJobEvent: (jobId, payload) =>
+    request(`/api/tracking/${jobId}/event`, { method: 'PATCH', body: payload }),
 
   // --- Profile ---
   getProfile: () => request('/api/profile'),

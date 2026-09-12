@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Company, GeneratedDocument, Job, JobMatch, Resume, SavedJob, User
+from app.models import Company, GeneratedDocument, Job, JobMatch, Resume, SavedJob, User, UserJob
 from app.schemas import CompanyOut, JobOut
 
 
@@ -59,6 +59,12 @@ def decorate_jobs(db: Session, user: User, jobs: Iterable[Job]) -> list[JobOut]:
             )
         )
     )
+    tracking = {
+        uj.job_id: uj
+        for uj in db.scalars(
+            select(UserJob).where(UserJob.user_id == user.id, UserJob.job_id.in_(job_ids))
+        )
+    }
 
     companies = {
         c.id: c for c in db.scalars(select(Company).where(Company.id.in_(company_ids)))
@@ -88,6 +94,18 @@ def decorate_jobs(db: Session, user: User, jobs: Iterable[Job]) -> list[JobOut]:
             ),
             requirements_missing_count=(
                 len(matches[job.id].requirements_missing) if job.id in matches else None
+            ),
+            status=tracking[job.id].status if job.id in tracking else None,
+            applied_at=tracking[job.id].applied_at if job.id in tracking else None,
+            status_updated_at=(
+                tracking[job.id].status_updated_at if job.id in tracking else None
+            ),
+            next_event_at=tracking[job.id].next_event_at if job.id in tracking else None,
+            next_event_type=(
+                tracking[job.id].next_event_type if job.id in tracking else None
+            ),
+            next_event_note=(
+                tracking[job.id].next_event_note if job.id in tracking else None
             ),
         )
         for job in jobs

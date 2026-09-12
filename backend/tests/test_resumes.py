@@ -156,12 +156,14 @@ def test_delete_resume_removes_derived_data(client, with_resume, ai_stub):
               "title": "Backend Engineer", "company": "Acme Ltd"},
     ).json()
     client.post(f"/api/jobs/{job['id']}/match", headers=headers)
-    client.post(f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "resume"})
-    assert client.get("/api/history", headers=headers).json()
+    doc = client.post(
+        f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "resume"}
+    ).json()
+    assert client.get(f"/api/documents/{doc['id']}", headers=headers).status_code == 200
 
     assert client.delete(f"/api/resumes/{resume['id']}", headers=headers).status_code == 204
     assert client.get("/api/resumes/active", headers=headers).json() is None
-    assert client.get("/api/history", headers=headers).json() == []
+    assert client.get(f"/api/documents/{doc['id']}", headers=headers).status_code == 404
 
 
 def test_deleting_the_active_resume_promotes_the_previous_one(client, with_resume, ai_stub):

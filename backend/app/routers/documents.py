@@ -1,4 +1,4 @@
-"""Tailored resume / cover letter generation, editing, and the History view."""
+"""Tailored resume / cover letter generation and editing."""
 
 from __future__ import annotations
 
@@ -11,14 +11,8 @@ from app.deps import CurrentUser, DbSession
 from app.models import DocumentKind, GeneratedDocument, Job, JobMatch
 from app.rate_limit import ai_rate_limit
 from app.routers.resumes import require_active_resume
-from app.schemas import (
-    DocumentGenerateRequest,
-    DocumentUpdate,
-    GeneratedDocumentOut,
-    HistoryEntryOut,
-)
+from app.schemas import DocumentGenerateRequest, DocumentUpdate, GeneratedDocumentOut
 from app.services import ai
-from app.services.user_state import decorate_jobs
 
 router = APIRouter(prefix="/api", tags=["documents"])
 
@@ -150,42 +144,3 @@ def delete_document(document_id: int, user: CurrentUser, db: DbSession) -> Respo
         db.delete(document)
         db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/history", response_model=list[HistoryEntryOut])
-def history(user: CurrentUser, db: DbSession) -> list[HistoryEntryOut]:
-    """Jobs this user has generated documents for, most recent first.
-
-    Derived from GeneratedDocument rather than stored separately - there is no
-    such thing as a history entry without a document.
-    """
-    documents = list(
-        db.scalars(
-            select(GeneratedDocument)
-            .options(
-                selectinload(GeneratedDocument.job).selectinload(Job.company)
-            )
-            .where(GeneratedDocument.user_id == user.id)
-            .order_by(GeneratedDocument.created_at.desc())
-        )
-    )
-    if not documents:
-        return []
-
-    grouped: dict[int, list[GeneratedDocument]] = {}
-    for document in documents:
-        grouped.setdefault(document.job_id, []).append(document)
-
-    jobs = {j.id: j for j in (d.job for d in documents)}
-    decorated = {j.id: out for j, out in zip(jobs.values(), decorate_jobs(db, user, jobs.values()))}
-
-    entries = [
-        HistoryEntryOut(
-            job=decorated[job_id],
-            documents=[GeneratedDocumentOut.model_validate(d) for d in docs],
-            last_generated_at=max(d.created_at for d in docs),
-        )
-        for job_id, docs in grouped.items()
-    ]
-    entries.sort(key=lambda e: e.last_generated_at, reverse=True)
-    return entries

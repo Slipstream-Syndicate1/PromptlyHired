@@ -2,15 +2,17 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import BottomNav from './components/BottomNav.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import OfflineBanner from './components/OfflineBanner.jsx'
+import ThemeToggle from './components/ThemeToggle.jsx'
 import { useAuth } from './context/AuthContext.jsx'
+import Dashboard from './pages/Dashboard.jsx'
 import DocumentEditor from './pages/DocumentEditor.jsx'
-import History from './pages/History.jsx'
 import JobDetail from './pages/JobDetail.jsx'
 import Jobs from './pages/Jobs.jsx'
 import Login from './pages/Login.jsx'
 import Profile from './pages/Profile.jsx'
 import SavedJobs from './pages/SavedJobs.jsx'
 import Signup from './pages/Signup.jsx'
+import Tracking from './pages/Tracking.jsx'
 
 function RequireAuth({ children }) {
   const { user, booting } = useAuth()
@@ -22,10 +24,11 @@ function RequireAuth({ children }) {
 }
 
 const PROTECTED = [
-  ['/', Jobs],
+  ['/', Dashboard],
+  ['/jobs', Jobs],
   ['/jobs/:jobId', JobDetail],
   ['/saved', SavedJobs],
-  ['/history', History],
+  ['/tracking', Tracking],
   ['/documents/:documentId', DocumentEditor],
   ['/profile', Profile],
 ]
@@ -36,6 +39,7 @@ export default function App() {
   return (
     <div className="app">
       <OfflineBanner />
+      <ThemeToggle />
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup />} />
