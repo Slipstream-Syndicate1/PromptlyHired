@@ -349,3 +349,46 @@ def test_deleting_a_resume_keeps_the_application(client, with_resume, with_job, 
     assert after.status_code == 200
     assert after.json()["resume_id"] is None
     assert after.json()["status"] == "applied"
+
+
+# --- Job detail -----------------------------------------------------------------
+
+
+def test_job_detail_shows_the_application(client, with_resume, with_job):
+    headers, _ = with_resume()
+    job = with_job(headers)
+    url = f"/api/jobs/{job['id']}"
+
+    assert client.get(url, headers=headers).json()["application"] is None
+
+    app = _apply(client, headers, job_id=job["id"], status="interview")
+    shown = client.get(url, headers=headers).json()["application"]
+    assert shown["id"] == app["id"]
+    assert shown["status"] == "interview"
+
+
+def test_job_detail_application_is_per_user(client, with_resume, with_job, auth):
+    headers, _ = with_resume()
+    job = with_job(headers)
+    _apply(client, headers, job_id=job["id"])
+
+    other, _, _ = auth()
+    assert client.get(f"/api/jobs/{job['id']}", headers=other).json()["application"] is None
+
+
+def test_manual_jobs_never_spend_ai_quota(client, with_resume, ai_stub):
+    """A hand-logged job has no advert, so matching or tailoring would send the
+    model an empty description. Both must refuse before calling it."""
+    headers, _ = with_resume()
+    app = _apply(client, headers, company="Globex", position="Analyst")
+    job_id = app["job"]["id"]
+
+    assert client.post(f"/api/jobs/{job_id}/match", headers=headers).status_code == 422
+    for kind in ("resume", "cover_letter"):
+        generated = client.post(
+            f"/api/jobs/{job_id}/documents", json={"kind": kind}, headers=headers
+        )
+        assert generated.status_code == 422
+    assert ai_stub["match"] == 0
+    assert ai_stub["resume"] == 0
+    assert ai_stub["cover"] == 0

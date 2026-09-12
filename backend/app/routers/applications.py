@@ -134,6 +134,16 @@ def _to_out(db, user, rows: list[Application]) -> list[ApplicationOut]:
     return out
 
 
+def application_for_job(db, user, job_id: int) -> ApplicationOut | None:
+    """The user's application for one job, shown on the job detail view."""
+    row = db.scalar(
+        select(Application)
+        .options(selectinload(Application.job).selectinload(Job.company))
+        .where(Application.user_id == user.id, Application.job_id == job_id)
+    )
+    return _to_out(db, user, [row])[0] if row else None
+
+
 # --- Applications -----------------------------------------------------------
 
 

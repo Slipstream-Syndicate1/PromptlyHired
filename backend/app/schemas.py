@@ -233,6 +233,8 @@ class JobDetailOut(BaseModel):
     job: JobOut
     match: JobMatchOut | None = None
     documents: list[GeneratedDocumentOut] = Field(default_factory=list)
+    # The user's tracked application for this job, if any.
+    application: ApplicationOut | None = None
 
 
 # --- Generated documents -------------------------------------------------
@@ -272,9 +274,6 @@ class HistoryEntryOut(BaseModel):
     job: JobOut
     documents: list[GeneratedDocumentOut]
     last_generated_at: datetime
-
-
-JobDetailOut.model_rebuild()
 
 
 # --- Applications ---------------------------------------------------------
@@ -443,3 +442,8 @@ class CommunicationOut(BaseModel):
     subject: str | None = None
     summary: str | None = None
     created_at: datetime
+
+
+# JobDetailOut refers to GeneratedDocumentOut and ApplicationOut, both defined
+# after it. Rebuilt once, here, where every name it needs exists.
+JobDetailOut.model_rebuild()
