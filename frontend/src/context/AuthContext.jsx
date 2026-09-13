@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { api, clearTokens, setTokens } from '../api/client'
+import { clearInstallDismissal } from '../lib/installSnooze.js'
 
 const AuthContext = createContext(null)
 
@@ -29,11 +30,14 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     setTokens(await api.login({ email, password }))
+    // Signing in offers the install banner again, until the app is installed.
+    clearInstallDismissal()
     setUser(await api.me())
   }, [])
 
   const signup = useCallback(async (name, email, password) => {
     setTokens(await api.signup({ name, email, password }))
+    clearInstallDismissal()
     setUser(await api.me())
   }, [])
 

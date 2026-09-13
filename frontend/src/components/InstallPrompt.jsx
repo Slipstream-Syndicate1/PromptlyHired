@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { isIos, isStandalone } from '../api/platform'
 import {
   INSTALLED,
+  dismissForThisSession,
+  dismissedThisSession,
   hiddenOnlyBecauseInstalled,
   isHidden,
-  snoozeValue,
 } from '../lib/installSnooze.js'
 
 // Kept from the original name so existing dismissals are read, not ignored.
@@ -40,27 +41,26 @@ function forgetStored() {
  *
  * Chrome, Edge and Android give a real `beforeinstallprompt` event, so they get
  * an Install button. Safari on iPhone and iPad gives nothing, so it gets the
- * manual steps instead. "Not now" hides the banner for a few days; installing
- * hides it for good.
+ * manual steps instead. It is offered again on every sign-in until the app is
+ * installed; "Not now" hides it for the rest of that session.
  */
 export default function InstallPrompt() {
   const [deferred, setDeferred] = useState(null)
   const [showIosHint, setShowIosHint] = useState(false)
-  const [hidden, setHidden] = useState(() => isHidden(readStored()))
+  const [hidden, setHidden] = useState(() => isHidden(readStored(), dismissedThisSession()))
 
   useEffect(() => {
-    const stored = readStored()
-    // Keep listening when the app was installed: the browser fires its install
-    // event only when it is not installed, so that event means it was removed.
-    // A "Not now" snooze is a deliberate choice and is still respected.
-    if (isStandalone() || (isHidden(stored) && !hiddenOnlyBecauseInstalled(stored))) return
+    // Listen even when the stored value says "installed": the browser fires its
+    // install event only when the app is not installed, so that event means it
+    // was removed and the stored value is stale.
+    if (isStandalone()) return
 
     const onBeforeInstall = (event) => {
       event.preventDefault()
       // The app is not installed after all, so offer it again.
       if (hiddenOnlyBecauseInstalled(readStored())) {
         forgetStored()
-        setHidden(false)
+        if (!dismissedThisSession()) setHidden(false)
       }
       setDeferred(event)
     }
@@ -81,7 +81,7 @@ export default function InstallPrompt() {
   }, [])
 
   const notNow = () => {
-    writeStored(snoozeValue())
+    dismissForThisSession()
     setHidden(true)
   }
 

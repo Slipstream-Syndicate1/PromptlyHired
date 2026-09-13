@@ -1,30 +1,23 @@
 /**
  * When the install banner may show again.
  *
- * "Not now" hides it for a few days rather than forever, so someone who was
- * busy gets asked once more later. Installing hides it for good.
+ * It is offered on every sign-in until the app is actually installed, because
+ * an app on the home screen is the whole point of a PWA. "Not now" only hides
+ * it for the rest of that session, so nobody is nagged twice in one sitting.
  */
 
-export const SNOOZE_DAYS = 3
 export const INSTALLED = 'installed'
-const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Whether a stored value still hides the banner.
+ * Whether the banner should stay hidden.
  *
- * The value is a timestamp (milliseconds) saying when "Not now" was tapped, or
- * INSTALLED. Anything else - nothing stored, or the old "1" that used to mean
- * "never again" - lets the banner show.
+ * `stored` is the long-lived value: INSTALLED once the app is installed, and
+ * anything else (nothing, or an old "not now" timestamp from the previous
+ * behaviour) means it may show. `dismissedThisSession` is this sitting's
+ * "Not now".
  */
-export function isHidden(stored, now = Date.now()) {
-  if (stored === INSTALLED) return true
-  const dismissedAt = Number(stored)
-  if (!Number.isFinite(dismissedAt) || dismissedAt <= 1) return false
-  return now - dismissedAt < SNOOZE_DAYS * DAY_MS
-}
-
-export function snoozeValue(now = Date.now()) {
-  return String(now)
+export function isHidden(stored, dismissedThisSession = false) {
+  return stored === INSTALLED || Boolean(dismissedThisSession)
 }
 
 /**
@@ -36,4 +29,32 @@ export function snoozeValue(now = Date.now()) {
  */
 export function hiddenOnlyBecauseInstalled(stored) {
   return stored === INSTALLED
+}
+
+// "Not now" lasts for this sitting only; signing in again offers it once more.
+export const SESSION_KEY = 'jobtrail.install_dismissed_session'
+
+export function dismissedThisSession() {
+  try {
+    return sessionStorage.getItem(SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function dismissForThisSession() {
+  try {
+    sessionStorage.setItem(SESSION_KEY, '1')
+  } catch {
+    /* ignore: the banner just stays until the page is left */
+  }
+}
+
+/** Called on sign-in, so the offer comes back until the app is installed. */
+export function clearInstallDismissal() {
+  try {
+    sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    /* ignore */
+  }
 }
