@@ -92,13 +92,16 @@ const EVENT_COLORS = { interview: 'blue', deadline: 'gold', opens: 'green', othe
 const eventColor = (type) => EVENT_COLORS[type] || 'slate'
 const eventLabel = (type) => EVENT_TYPES.find((t) => t.value === type)?.label || 'Event'
 
-// next_action_date is a plain date; treat it as that day's morning so
-// "in 2 days" / "overdue" line up with the calendar date, not a UTC midnight.
-const eventTime = (application) => new Date(`${application.next_action_date}T09:00:00`)
+// next_action_date is a plain date; treat it as that day's noon so sorting
+// lines up with the calendar date, not a UTC midnight.
+const eventTime = (application) => new Date(`${application.next_action_date}T12:00:00`)
 const localToday = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+// A date-only event is overdue from the *next* day: something due today is
+// still due, not missed. ISO dates compare correctly as strings.
+const isOverdue = (application) => application.next_action_date < localToday()
 
 function EventEditor({ application, onSave, onCancel }) {
   const [type, setType] = useState(application.next_action_type || 'interview')
@@ -234,7 +237,7 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
   // assessment; Closed: rejected / withdrawn) shows both on the card as a
   // segmented control - a two-way choice shouldn't be buried in a menu.
   const shared = application && column.statuses.length > 1
-  const overdue = application?.next_action_date && eventTime(application).getTime() < Date.now()
+  const overdue = application?.next_action_date && isOverdue(application)
   // The one time-based chip worth showing: silence that needs acting on.
   // "Moved 2 minutes ago" said nothing the sort order didn't already.
   const quiet = application?.needs_follow_up && !application.next_action_date
@@ -360,7 +363,6 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
 }
 
 function UpcomingSidebar({ items }) {
-  const now = Date.now()
   const upcoming = items
     .filter((item) => item.application?.next_action_date)
     .sort((a, b) => eventTime(a.application) - eventTime(b.application))
@@ -382,7 +384,7 @@ function UpcomingSidebar({ items }) {
       ) : (
         <ul className="tracking-upcoming-list">
           {upcoming.map(({ id, job, application }) => {
-            const overdue = eventTime(application).getTime() < now
+            const overdue = isOverdue(application)
             return (
               <li key={id} className={`tracking-upcoming-item${overdue ? ' overdue' : ''}`}>
                 <Link to={`/jobs/${job.id}`} title={application.next_action_date}>
