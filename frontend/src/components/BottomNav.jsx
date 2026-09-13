@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import BrandLogo from "./BrandLogo.jsx";
+import "./BottomNav.css";
 
 /* Primary navigation: dashboard plus the core job-search areas. */
 const ITEMS = [
