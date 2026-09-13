@@ -113,14 +113,19 @@ class UserOut(BaseModel):
     email: EmailStr
     name: str
     profile_picture_url: str | None = None
+    preferred_location: str | None = None
+    include_remote: bool = True
     created_at: datetime
 
 
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     profile_picture_url: str | None = Field(default=None, max_length=1024)
+    # Blank or null clears it, so recommendations use the resume location again.
+    preferred_location: str | None = Field(default=None, max_length=120)
+    include_remote: bool | None = None
 
-    @field_validator("name", "profile_picture_url")
+    @field_validator("name", "profile_picture_url", "preferred_location")
     @classmethod
     def _clean(cls, v: str | None) -> str | None:
         return clean_text(v)
@@ -166,6 +171,43 @@ class SkillProfileUpdate(BaseModel):
         return clean_text(v)
 
 
+class ResumeEntryContent(BaseModel):
+    """Optional structured entry used by the classic one-page resume template.
+
+    Existing generated resumes can keep using ``heading`` + ``bullets`` only;
+    these fields simply let the master resume preserve two-column metadata such
+    as dates and locations without encoding layout into a bullet string.
+    """
+
+    title: str = Field(default="", max_length=300)
+    meta: str = Field(default="", max_length=500)
+    right: str = Field(default="", max_length=240)
+    subtitle: str = Field(default="", max_length=500)
+    subtitle_right: str = Field(default="", max_length=240)
+    bullets: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ResumeSectionContent(BaseModel):
+    heading: str = Field(default="", max_length=160)
+    bullets: list[str] = Field(default_factory=list, max_length=20)
+    entries: list[ResumeEntryContent] = Field(default_factory=list, max_length=20)
+
+
+class MasterResumeContent(BaseModel):
+    """Canonical editable resume shape shared with tailored resume documents."""
+
+    full_name: str = Field(default="", max_length=160)
+    headline: str = Field(default="", max_length=240)
+    contact_line: str = Field(default="", max_length=1000)
+    summary: str = Field(default="", max_length=4000)
+    sections: list[ResumeSectionContent] = Field(default_factory=list, max_length=12)
+    skills: list[str] = Field(default_factory=list, max_length=40)
+
+
+class MasterResumeUpdate(BaseModel):
+    master_content: MasterResumeContent
+
+
 class ResumeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -175,6 +217,7 @@ class ResumeOut(BaseModel):
     content_type: str
     is_active: bool
     uploaded_at: datetime
+    master_content: MasterResumeContent | None = None
     skill_profile: SkillProfileOut | None = None
 
 
@@ -233,6 +276,23 @@ class JobFeedOut(BaseModel):
     notice: str | None = None
 
 
+class RecommendedJobOut(BaseModel):
+    job: JobOut
+    # The resume skills this job mentions - shown as the reason it is recommended.
+    matched_skills: list[str]
+    # 0-100: how many of the top resume skills the job mentions. Not an AI score.
+    relevance: int
+
+
+class RecommendationsOut(BaseModel):
+    jobs: list[RecommendedJobOut]
+    searched_titles: list[str]
+    location: str | None = None
+    include_remote: bool = True
+    sources: list[str]
+    notice: str | None = None
+
+
 # --- Match analysis ------------------------------------------------------
 
 
@@ -269,6 +329,8 @@ class GeneratedDocumentOut(BaseModel):
     kind: DocumentKind
     content: dict
     edited_content: dict | None = None
+    # "master-copy" for a straight copy of the master resume, otherwise the AI model.
+    model_used: str | None = None
     created_at: datetime
     updated_at: datetime
 

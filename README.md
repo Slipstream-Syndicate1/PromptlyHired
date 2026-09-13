@@ -1,35 +1,55 @@
 # PromptlyHired
 
-Paste a link to any job. It reads your resume, tells you how well you actually
-match that role, shows the gaps, and writes a tailored resume and cover letter
-you edit before exporting.
+A job application organizer. Find jobs, see how well you match them, make a
+resume and cover letter for each one, and keep track of every application until
+you hear back.
 
-**Runs for £0.** No paid APIs anywhere.
+**Runs for free.** Every service it uses has a free tier, and no paid APIs are involved.
 
-One React PWA, one FastAPI backend, one URL — phone, laptop and tablet, no native
-builds. See [CLAUDE.md](CLAUDE.md) for the full spec and the reasoning behind the
+It's one React PWA and one FastAPI backend at one URL. It works on a phone,
+laptop or tablet, and you can install it to your home screen. There are no native
+apps. See [CLAUDE.md](CLAUDE.md) for the full spec and the reasoning behind the
 architecture.
 
-## How it works
+## What it does
 
-1. **Upload your resume.** Text is extracted locally (pypdf / python-docx), falling
-   back to the model reading the PDF natively only if it's a scan.
-2. **Paste a job link.** The page is fetched and parsed — schema.org JSON-LD first,
-   so most pastes cost no AI quota. Sites that block fetches (LinkedIn, Indeed) have
-   a paste-the-text fallback.
-3. **Get your match** — percentage, requirements met, and the gaps.
-4. **Generate a resume and cover letter**, edit them in-app, export to PDF.
+**Find jobs**
+- **Live job feed** on the Jobs page, from Adzuna and Himalayas. Search by keywords
+  and filter by location, job type, remote only and date posted.
+- **Recommended for you** at the top of the Jobs page: jobs that fit the skills on
+  your resume. The best matches are checked with AI and the top three are shown.
+  Set your preferred location and whether to include remote jobs on Profile.
+- **Paste a link** to any other posting (LinkedIn, Indeed, a company careers page),
+  or paste the advert text for sites that block fetching.
 
-`History` keeps every job you've prepared documents for.
+**See how well you match**
+- Open a job to get a match percentage, the requirements you meet and the ones
+  you're missing. Results are saved, so reopening a job is free.
 
-## Status
+**Resumes and cover letters**
+- **Master resume** on Profile: your base resume in a classic one-page layout.
+  **Fill from uploaded CV** fills it in for you, so you only check and fix it.
+  Whatever you save here is where every job's resume starts.
+- For each job, either **Start from master resume** (an exact copy, no AI) or
+  **Tailor resume with AI**. Tailoring rewords and reorders your bullets for the
+  job. It never changes names, employers, dates or locations.
+- **Create cover letter** writes one for the job from your resume and the job description.
+- Edit everything in the app with a live preview, then export to PDF. Edits for
+  one job never change your master resume.
 
-| Phase | State |
-| --- | --- |
-| 1 — Resume + paste-a-link | done |
-| 2 — Match analysis | done |
-| 3 — Document generation, editor, export | done |
-| 4 — Polish (steering, templates, diff view) | partial: steering is wired end to end |
+**Track applications**
+- Mark a job as applied and move it through the stages: applied, online
+  assessment, interview, then offer, rejected or withdrawn. Each change is kept
+  as history, with a note on what happened.
+- Log calls, emails and meetings with the employer, and set a next step with a date.
+- **Log an application** for jobs you applied to somewhere else.
+- **Saved** keeps the jobs you've shortlisted. **History** keeps every job you've
+  made documents for.
+
+**Everything else**
+- A home dashboard, a calendar, and a guided tour the first time you sign in.
+- Light and dark themes.
+- Forgot password by email.
 
 ## Running locally
 
@@ -48,18 +68,24 @@ npm install && cp .env.example .env
 npm run dev                                                    # :5173
 ```
 
-### Keys you need
+If the project folder is synced by OneDrive, `--reload` can miss file changes.
+Restart the backend after switching branches.
 
-| Variable | Without it |
-| --- | --- |
-| `GEMINI_API_KEY` | **Nothing AI works.** Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey). |
+### Keys
 
-There are no other keys. There is no job-board API.
+| Variable | What it's for | Without it |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Match analysis, resumes, cover letters, recommendations scoring | **No AI features work.** Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). |
+| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Local jobs in the feed | The feed only shows remote jobs from Himalayas. Free key at [developer.adzuna.com](https://developer.adzuna.com). |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Password reset emails | In development the reset link is written to the backend log. In production no reset email can be sent. A Gmail App Password works. |
 
-`GEMINI_MODEL` defaults to `gemini-3.8-flash` — a **pinned** model, not the
-`gemini-flash-latest` alias. The alias is what every default install points at,
-and under load it returns 503 "high demand" while a pinned sibling answers
-immediately. `python -m app.tasks doctor` lists what your key can call.
+Optional settings:
+- `JOB_COUNTRY` sets the Adzuna country.
+- `FEED_CACHE_MINUTES` (default 180) sets how long identical searches are served from cache.
+- `GEMINI_MODEL` (default `gemini-3.8-flash`) and `GEMINI_FALLBACK_MODELS` set the AI models to use.
+
+Each free Gemini model allows about 20 requests a day. When one runs out, the app
+moves on to the next model in the list.
 
 Check what's actually wired up:
 
@@ -68,42 +94,51 @@ curl localhost:8000/health                       # readiness flags
 .venv/Scripts/python.exe -m app.tasks doctor     # connects to each service for real
 ```
 
+The doctor checks the database, migrations, every AI model in the chain, file
+storage, the job feed, email and the frontend URLs.
+
 ## What it costs
 
-Nothing. Gemini's free tier covers the AI; jobs come from links you paste, so there
-is no job-board API to pay for; Render, Netlify and Cloudflare R2 free tiers cover
-the rest.
+Nothing:
+- **AI:** Gemini's free tier.
+- **Jobs:** Adzuna's free developer key (250 calls a day) and Himalayas, which needs no key.
+- **Hosting:** the free tiers of Render, Netlify and Cloudflare R2.
 
-The real constraint is **rate limit**, not money — the free tier allows single-digit
-requests per minute. So the code parses pages itself before ever calling the model,
-persists every AI result, and surfaces quota errors as "wait a minute" rather than
-a failure.
+The real limit is the number of requests, not money. So the app:
+- parses job pages itself before calling the model
+- saves every AI result
+- serves repeated job searches from a shared cache
+- says "try again later" when a quota runs out, instead of failing
 
 ## Security
 
-Job descriptions are fetched from pages you paste links to, written by strangers,
-then fed to an LLM. Two concerns dominate:
+Job descriptions come from websites written by strangers and are fed to an AI
+model, so two concerns dominate.
 
-**SSRF.** The server fetches a URL you control. Private, loopback and link-local
-addresses (cloud metadata at `169.254.169.254`) are refused, only http(s) is
-allowed, and every redirect is re-validated — an open redirect to an internal
-address is the standard bypass.
+**SSRF.** When you paste a link, the server fetches that URL. Private, loopback
+and link-local addresses (like cloud metadata at `169.254.169.254`) are refused.
+Only http(s) is allowed, and every redirect is checked again.
 
-**Prompt injection** is the central concern, not a footnote:
-
-- Adverts are wrapped in delimiters and labelled as data, never instructions. A
-  posting that emits the closing delimiter to break out has it stripped.
-- Adverts never enter the system prompt — only the user turn.
-- Every call is constrained to a Pydantic schema, and the match percentage is
-  clamped 0–100 server-side regardless of what comes back.
-- No LLM output triggers a side effect. Generation writes a draft; you review and
-  edit before anything is exported. Nothing is ever sent on your behalf.
-- Your resume goes to the model because the feature requires it, and nowhere else.
+**Prompt injection:**
+- Job adverts are wrapped in delimiters and marked as data, never instructions,
+  and they never go in the system prompt.
+- Every AI call must return a fixed schema, and the match percentage is clamped to
+  0–100 on the server.
+- When the AI tailors your resume, it can only send back edits to your master
+  resume. Names, employers, dates and locations are copied from your master on the
+  server, so a poisoned advert can't change them.
+- AI output never triggers an action on its own. Documents are drafts you review
+  and edit, and nothing is ever sent on your behalf.
+- Your resume goes to the model because the feature needs it, and nowhere else.
   It is never logged in full.
 
-Carried over unchanged: bcrypt hashing, 15-minute access JWTs with rotating hashed
-refresh tokens, SQLAlchemy ORM only, Pydantic validation at every boundary, auth
-rate limiting, CORS locked to the real origin, HTTPS.
+Also in place:
+- bcrypt password hashing
+- short-lived access tokens with rotating refresh tokens, stored as hashes
+- single-use password reset links that expire after 30 minutes
+- rate limits on sign-in and AI endpoints
+- Pydantic validation on every endpoint, and SQLAlchemy ORM only
+- CORS locked to the real site, and HTTPS
 
 ## Tests
 
@@ -113,15 +148,27 @@ cd backend
 python ../scripts/audit_spec.py           # checks the code against CLAUDE.md
 ```
 
-Tests run against real Postgres, never SQLite — the schema uses native enums, JSONB
-and server-side defaults. **Every model call is stubbed**, so the suite never spends
-money. Coverage includes the injection defenses and score clamping directly.
+Tests run against real Postgres, never SQLite, because the schema uses native
+enums, JSONB and server-side defaults. **Every AI call is stubbed**, so the tests
+never use up your quota. The injection defenses and score clamping are tested directly.
 
 ## Deploying
 
-See **[DEPLOYMENT.md](DEPLOYMENT.md)**. Netlify for the frontend, Render for the API
-and Postgres, Cloudflare R2 for uploaded resumes.
+See **[DEPLOYMENT.md](DEPLOYMENT.md)**:
+- Netlify for the frontend.
+- Render for the API and Postgres. Migrations run automatically on start.
+- Cloudflare R2 for uploaded resumes.
 
-The API refuses to boot in production with a default `JWT_SECRET`, a wildcard or
-non-HTTPS `CORS_ORIGINS`, or an http `APP_BASE_URL`. Anything that merely degrades
-(no AI key, local media storage) is logged as `DEGRADED` and reported on `/health`.
+In production the API refuses to start if `JWT_SECRET` is left at its default,
+`CORS_ORIGINS` is a wildcard or not HTTPS, or `APP_BASE_URL` is http. Settings that
+only turn features off (no AI key, no email, local file storage) are logged as
+`DEGRADED` and shown on `/health`.
+
+## Known limits
+
+- The calendar saves events in your browser only, so they don't sync between devices yet.
+- Adzuna only gives short description snippets, so matches on Adzuna jobs work
+  from less text. The Apply button always opens the full listing.
+- Resume PDFs are one page. The app warns you if yours runs longer.
+- The free AI tier is small. With several people using it at once, some requests
+  will wait for the quota to reset.

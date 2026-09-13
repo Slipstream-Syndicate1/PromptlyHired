@@ -42,6 +42,7 @@ const PROTECTED = [
 
 export default function App() {
   const { user } = useAuth();
+  const { pathname } = useLocation();
 
   return (
     <div className="app">
@@ -81,7 +82,9 @@ export default function App() {
 
         {user && <InstallPrompt />}
         {user && <BottomNav />}
-        {user && <TourReplayButton />}
+        {/* The tour runs on the home page, so its replay button lives only there
+            instead of floating over content on every other page. */}
+        {user && pathname === "/" && <TourReplayButton />}
         <TourAutoStartGate />
       </TourProvider>
     </div>

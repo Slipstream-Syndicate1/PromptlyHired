@@ -147,6 +147,22 @@ ck("feed", "search bar on the Jobs page", 'type="search"' in read("frontend/src/
 ck("feed", "feed shown on the Jobs page", "JobFeed" in read("frontend/src/pages/Jobs.jsx"))
 ck("feed", "Adzuna keys are secrets in the blueprint", "ADZUNA_APP_KEY" in read("render.yaml"))
 
+head("Recommended jobs - from resume skills")
+rec_py = read("backend/app/services/recommendations.py")
+rec_router = read("backend/app/routers/jobs.py")
+ck("recommend", "recommendations endpoint", '"/recommended"' in rec_router)
+ck("recommend", "declared before the job id route",
+   '"/recommended"' in rec_router and rec_router.find('"/recommended"') < rec_router.find('"/{job_id}"'))
+ck("recommend", "searches through the shared feed cache", "job_feed.search" in rec_py)
+ck("recommend", "searches the resume job titles", "job_titles" in rec_py)
+ck("recommend", "ranks by skills mentioned", "def match_skills" in rec_py)
+ck("recommend", "jobs already applied to are left out", "Application.job_id" in rec_py)
+ck("recommend", "preferred location and remote setting",
+   "preferred_location" in models and "include_remote" in models)
+ck("recommend", "section on the Jobs page", "RecommendedJobs" in read("frontend/src/pages/Jobs.jsx"))
+ck("recommend", "AI scores only the top few", "AI_SCORED" in read("frontend/src/components/RecommendedJobs.jsx"))
+ck("recommend", "tests", (ROOT / "backend/tests/test_recommendations.py").exists())
+
 head("History is derived, not stored")
 ck("history", "no History table", "class History" not in models)
 documents_router = read("backend/app/routers/documents.py")
@@ -247,6 +263,19 @@ ck("docs", "user reviews before export", "before you use it" in editor)
 ck("docs", "reset to generated", "resetDocument" in editor)
 ck("docs", "PDF export", (FE / "src/lib/exportPdf.js").exists())
 ck("docs", "export escapes model output", "function esc(" in read("frontend/src/lib/exportPdf.js"))
+
+head("Master resume - permanent base, per-job copies")
+tailor_py = read("backend/app/services/tailored_resume.py")
+docs_router = read("backend/app/routers/documents.py")
+resumes_router = read("backend/app/routers/resumes.py")
+ck("master", "copy of the master without AI", '"/jobs/{job_id}/documents/from-master"' in docs_router)
+ck("master", "AI returns edits applied to a copy", "def apply_tailoring" in tailor_py and "tailor_master_resume" in docs_router)
+ck("master", "facts cannot change: edits keyed by index", "section_index" in read("backend/app/services/ai.py"))
+ck("master", "fill from uploaded CV returns a draft", '"/{resume_id}/master/draft"' in resumes_router)
+ck("master", "new upload keeps the master", "master_content=master_content" in resumes_router)
+ck("master", "one editor for master and job copies",
+   "ResumeEditor" in read("frontend/src/pages/DocumentEditor.jsx") and "ResumeEditor" in read("frontend/src/components/ResumePanel.jsx"))
+ck("master", "tests", (ROOT / "backend/tests/test_tailored_resume.py").exists())
 
 head("Security carried forward")
 sec = read("backend/app/security.py")

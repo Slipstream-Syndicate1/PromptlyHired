@@ -1,0 +1,84 @@
+/* Desktop nav rail.
+
+   styles.css collapses the desktop sidebar to an invisible 18px strip, so
+   nobody could tell a menu was there. This keeps a slim rail of icons visible
+   and clickable, and still expands to the full labelled menu on hover or
+   keyboard focus (:focus-visible, not :focus-within: a mouse click leaves
+   the clicked link focused, which would otherwise hold the menu open after
+   navigating).
+
+   Kept out of styles.css, which the UI branches rewrite. Selectors use
+   `nav.nav` so they outrank the `.nav` rules there whatever order the CSS
+   loads in, while the `.nav:hover` rules there still win for expanding. */
+
+@media (min-width: 768px) {
+  nav.nav {
+    width: 64px;
+    padding: 24px 8px;
+    background: var(--nav-bg);
+    backdrop-filter: blur(12px);
+    border-right-color: var(--border);
+  }
+
+  /* Icons stay visible and clickable while collapsed. */
+  nav.nav a {
+    width: 48px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+    color: var(--muted);
+  }
+
+  nav.nav a:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+
+  nav.nav a.active {
+    color: var(--accent);
+  }
+
+  /* Labels take no space until the rail opens. They stay in the page for
+     screen readers. */
+  nav.nav a span {
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 140ms ease, max-width 200ms ease;
+  }
+
+  nav.nav:hover a,
+  nav.nav:has(a:focus-visible) a {
+    width: 200px;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 0 12px;
+  }
+
+  nav.nav:hover a span,
+  nav.nav:has(a:focus-visible) a span {
+    max-width: 160px;
+    opacity: 1;
+  }
+
+  /* Content sits beside the rail, never under it. The expanded-menu rules in
+     styles.css are more specific, so opening the menu still pushes the page. */
+  .app .page {
+    width: calc(100% - 96px);
+    margin-left: 80px;
+    margin-right: 16px;
+  }
+}
+
+@media (min-width: 768px) and (prefers-reduced-motion: reduce) {
+  nav.nav,
+  nav.nav a,
+  nav.nav a span,
+  .app .page {
+    transition: none;
+  }
+}

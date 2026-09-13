@@ -125,17 +125,50 @@ class MatchAnalysis(BaseModel):
     rationale: str = Field(description="Two or three sentences justifying the score")
 
 
+class ResumeEntry(BaseModel):
+    """One school, job or project, laid out like the master resume template."""
+
+    title: str = Field(description="Position for a job, school for education, name for a project")
+    meta: str = Field(description="Projects only: technologies used. Otherwise empty")
+    right: str = Field(description="Dates for a job or project; location for education")
+    subtitle: str = Field(description="Employer for a job, degree for education. Empty for projects")
+    subtitle_right: str = Field(description="Location for a job; dates for education")
+    bullets: list[str]
+
+
 class ResumeSection(BaseModel):
     heading: str
-    bullets: list[str]
+    entries: list[ResumeEntry]
+    bullets: list[str] = Field(description="Only for sections that have no entries")
 
 
 class TailoredResume(BaseModel):
     full_name: str
-    headline: str = Field(description="One line positioning the candidate for this role")
+    headline: str = Field(description="One line positioning the candidate, or empty")
+    contact_line: str = Field(description="phone | email | linkedin | github, empty parts kept")
     summary: str
     sections: list[ResumeSection]
-    skills: list[str]
+    skills: list[str] = Field(description="Lines such as 'Languages: Python, SQL'")
+
+
+class EntryTailoring(BaseModel):
+    entry_index: int = Field(description="The [entry N] number from the master resume")
+    bullets: list[str] = Field(description="This entry's bullets, reworded for the job")
+
+
+class SectionTailoring(BaseModel):
+    section_index: int = Field(description="The [section N] number from the master resume")
+    entries: list[EntryTailoring] = Field(description="The section's entries, most relevant first")
+    bullets: list[str] = Field(description="Reworded [section bullets], or empty if it has none")
+
+
+class MasterTailoring(BaseModel):
+    """Edits to the master resume. Facts such as dates and employers are not fields here."""
+
+    headline: str
+    summary: str
+    sections: list[SectionTailoring] = Field(description="Every section, most relevant first")
+    skills: list[str] = Field(description="The master's skill lines, reordered and trimmed")
 
 
 class CoverLetter(BaseModel):
@@ -396,10 +429,89 @@ def analyze_match(resume_text: str, job_title: str, company: str, description: s
     return result
 
 
+_RESUME_LAYOUT = (
+    "Lay the resume out like a classic one-page technical resume. Use the "
+    "headings Education, Experience and Projects where the resume has them, plus "
+    "any other sections it has. Put each school, job and project in `entries`: "
+    "for a job, title is the position, subtitle the employer, right the dates "
+    "and subtitle_right the location; for education, title is the school, right "
+    "the location, subtitle the degree and subtitle_right the dates; for a "
+    "project, title is its name, meta the technologies and right the dates. Use "
+    "a section's own `bullets` only for sections without entries. contact_line "
+    "is 'phone | email | linkedin | github' in that order, leaving a part empty "
+    "when the resume does not give it. Skills are lines such as "
+    "'Languages: Python, SQL', grouped under Languages, Frameworks, Developer "
+    "Tools and Libraries where they fit."
+)
+
+
+def structure_resume(resume_text: str) -> TailoredResume:
+    """Read an uploaded CV into the master resume layout, for the user to check."""
+    system = (
+        "You copy a candidate's resume into a structured layout.\n\n"
+        "Copy faithfully: keep the candidate's own wording, names, dates and "
+        "places. Do not rewrite, summarise or improve anything, and never invent "
+        "employers, dates, qualifications or skills that are not in the resume. "
+        "Leave a field empty when the resume does not state it.\n\n"
+        f"{_RESUME_LAYOUT}"
+    )
+    return _generate(
+        "resume-structuring",
+        system=system,
+        prompt=f"Here is the resume:\n\n{(resume_text or '')[:MAX_RESUME_CHARS]}",
+        schema=TailoredResume,
+    )
+
+
+def tailor_master_resume(
+    master_text: str, job_title: str, company: str, description: str,
+    match_summary: str = "", instructions: str | None = None,
+) -> MasterTailoring:
+    """Suggest edits to the master resume for one job.
+
+    Returns edits keyed to the master's sections and entries, not a resume: the
+    caller applies them to a copy of the master, so facts cannot change.
+    """
+    system = (
+        "You tailor a candidate's master resume to one specific job by making "
+        "quick edits to it.\n\n"
+        f"{_INJECTION_GUARD}\n\n"
+        "The master resume lists numbered sections and entries. For every section "
+        "and entry, return its number with its bullets reworded to emphasise what "
+        "this job asks for, most relevant sections and entries first. You may "
+        "reorder, reword, merge or trim bullets, but never return more bullets "
+        "for an entry than it has. Each bullet may only use facts from that "
+        "entry's own bullets: do not turn the skills list into new "
+        "accomplishments. You may NOT invent employers, dates, qualifications, "
+        "results or skills the candidate does not have; fabricated experience "
+        "would harm the candidate in an interview.\n"
+        "Lead each bullet with a strong verb. Return an entry with no bullets "
+        "when it has none. Return a headline and summary only if the master has "
+        "them, otherwise empty strings. Return the master's skill lines with "
+        "their labels unchanged, most relevant items first, leaving out skills "
+        "irrelevant to this job."
+    )
+    task = (
+        f"Target role: {job_title}\nCompany: {company}\n\n"
+        f"{wrap_untrusted(description)}\n\n"
+        + (f"Known gaps and strengths:\n{match_summary}\n\n" if match_summary else "")
+        + (f"The candidate asks you to: {instructions}\n\n" if instructions else "")
+        + "Tailor the master resume to this job."
+    )
+    return _generate(
+        "resume-tailoring",
+        system=system,
+        prompt=f"CANDIDATE MASTER RESUME:\n\n{(master_text or '')[:MAX_RESUME_CHARS]}\n\n{task}",
+        schema=MasterTailoring,
+        thinking=settings.gemini_thinking_level,
+    )
+
+
 def generate_resume(
     resume_text: str, job_title: str, company: str, description: str,
     match_summary: str = "", instructions: str | None = None,
 ) -> TailoredResume:
+    """A tailored resume from the uploaded CV text, used when no master resume is saved."""
     system = (
         "You rewrite a candidate's resume so it targets one specific job, using "
         "a conventional, ATS-friendly structure hiring managers expect.\n\n"
@@ -409,7 +521,8 @@ def generate_resume(
         "employers, dates, qualifications or skills the candidate does not have. "
         "Fabricated experience would harm the candidate in an interview.\n"
         "Lead each bullet with a strong verb and include concrete outcomes where "
-        "the source resume provides them."
+        "the source resume provides them.\n\n"
+        f"{_RESUME_LAYOUT}"
     )
     task = (
         f"Target role: {job_title}\nCompany: {company}\n\n"

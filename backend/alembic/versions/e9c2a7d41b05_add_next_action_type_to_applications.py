@@ -1,7 +1,7 @@
 """add next_action_type to applications
 
 Revision ID: e9c2a7d41b05
-Revises: 6748afe89a48
+Revises: 08fd1a1ed7a0
 Create Date: 2026-09-12 21:10:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'e9c2a7d41b05'
-down_revision: Union[str, None] = '6748afe89a48'
+down_revision: Union[str, None] = '08fd1a1ed7a0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

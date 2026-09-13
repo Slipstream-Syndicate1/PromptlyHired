@@ -172,6 +172,9 @@ export const api = {
   // Live jobs from Adzuna and Himalayas. params: { q, location, job_type,
   // remote_only, posted_within_days, page }. Blank values are left out.
   jobFeed: (params = {}) => request(`/api/jobs/feed${qs(params)}`),
+  // Jobs fitting the active resume, ranked by skills mentioned. Each item is
+  // { job, matched_skills, relevance }; no AI call happens here.
+  recommendedJobs: () => request('/api/jobs/recommended'),
   addJobFromUrl: (url) => request('/api/jobs/from-url', { method: 'POST', body: { url } }),
   // Title + company (+ optional url), no description - for the tracking board.
   addJobManual: (payload) => request('/api/jobs/manual', { method: 'POST', body: payload }),
@@ -195,10 +198,17 @@ export const api = {
   reanalyzeResume: (id) => request(`/api/resumes/${id}/analyze`, { method: 'POST' }),
   updateSkillProfile: (id, payload) =>
     request(`/api/resumes/${id}/skill-profile`, { method: 'PATCH', body: payload }),
+  updateMasterResume: (id, master_content) =>
+    request(`/api/resumes/${id}/master`, { method: 'PUT', body: { master_content } }),
+  // Reads the uploaded CV into the master layout. Returns a draft; saves nothing.
+  draftMasterFromUpload: (id) => request(`/api/resumes/${id}/master/draft`, { method: 'POST' }),
 
   // --- Documents + history ---
   generateDocument: (jobId, payload) =>
     request(`/api/jobs/${jobId}/documents`, { method: 'POST', body: payload }),
+  // An exact copy of the master resume for one job. No AI.
+  copyMasterResume: (jobId) =>
+    request(`/api/jobs/${jobId}/documents/from-master`, { method: 'POST' }),
   getDocument: (id) => request(`/api/documents/${id}`),
   updateDocument: (id, edited_content) =>
     request(`/api/documents/${id}`, { method: 'PATCH', body: { edited_content } }),

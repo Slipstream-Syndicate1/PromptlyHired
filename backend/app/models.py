@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -74,6 +75,11 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     profile_picture_url: Mapped[str | None] = mapped_column(String(1024))
+    # Job recommendations: where to search. Overrides the resume location when set.
+    preferred_location: Mapped[str | None] = mapped_column(String(120))
+    include_remote: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -107,6 +113,11 @@ class Resume(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text)
+    # User-edited canonical resume used as the source for tailored documents.
+    # Kept as structured JSON so the frontend editor and generated resume share
+    # the same stable shape. Older uploads may leave this null and fall back to
+    # extracted_text until the user saves a master resume.
+    master_content: Mapped[dict | None] = mapped_column(JSONB)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
