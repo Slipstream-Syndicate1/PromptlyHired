@@ -28,6 +28,11 @@ def update_profile(payload: UserUpdate, user: CurrentUser, db: DbSession) -> Use
         user.name = fields["name"]
     if "profile_picture_url" in fields:
         user.profile_picture_url = fields["profile_picture_url"]
+    if "preferred_location" in fields:
+        # Already cleaned; blank becomes None, which means use the resume location.
+        user.preferred_location = fields["preferred_location"]
+    if fields.get("include_remote") is not None:
+        user.include_remote = fields["include_remote"]
     db.commit()
     db.refresh(user)
     return user

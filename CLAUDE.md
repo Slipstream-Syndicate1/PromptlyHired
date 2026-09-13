@@ -134,7 +134,8 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 ## Data model
 
 **User**
-- id, email, password_hash, name, profile_picture_url, created_at
+- id, email, password_hash, name, profile_picture_url, preferred_location (nullable), include_remote (default true), created_at
+- `preferred_location` and `include_remote` steer job recommendations; blank location means use the resume location.
 
 **Resume** (the uploaded source document)
 - id, user_id (FK), file_url, original_filename, content_type, uploaded_at, is_active
@@ -249,6 +250,27 @@ Every job card carries a clear outbound link to the original posting. Requiremen
 ### Document editor
 
 Generated documents open in a structured editor — fields and bullet lists, not a freeform textarea. The user revises, then exports to PDF. Both the AI original and the edited version are retained.
+
+---
+
+## Recommended jobs
+
+A "Recommended for you" section at the top of the Jobs page: jobs from the internet that fit the skills in the active resume.
+
+### How it works
+1. Read the active resume's skill profile: skills, suggested job titles and locations.
+2. Search the free job sources (Adzuna and Himalayas) for the **top two job titles**, through `job_feed.search`, so the shared feed cache makes repeat visits free. With no titles, it searches for the two strongest skills.
+3. Search where the user asked: `preferred_location` from Profile when set, otherwise the first location on the resume. `include_remote` (on by default) keeps or drops Himalayas listings, which are all remote.
+4. **Rank by the skills each job mentions**, a mention in the title counting double, plus a bonus for sharing words with a resume job title and a bonus for local (location-searched) jobs, newest first on ties. Description-only mentions count at most 4: remote adverts run to thousands of characters while local ones arrive as 500-character snippets, and without the cap long adverts buried every local job. When a title finds fewer than 5 local jobs, the same role is searched again without level or term words ("Software Developer Intern" also searches "Software Developer"), since local boards rarely list intern titles. A job mentioning no skills stays in only when its title plainly matches a resume job title (short adverts often list no skills); jobs the user already applied to are left out. At most 20 are returned.
+5. Each card says **why**: "Matches 4 of your skills: Python, AWS...". `relevance` (0-100) is the share of a realistic ten skills a job mentions. It is not an AI score and is never shown as one.
+
+### AI scores, then the best three
+The page takes the **top six** by skill fit, requests an AI match score for each through the normal `POST /api/jobs/{id}/match`, one at a time, and **displays the three with the highest match %** first. **Show more** reveals the rest: the remaining scored jobs by match %, then the other recommendations in skill-fit order, which are not scored automatically. Jobs not yet scored always sort after scored ones, in skill-fit order, so a quota error part way still shows the best three available. Jobs that already have a cached score are skipped, and scoring stops at the first quota error with a note. A refresh spends at most six of the roughly 20 free AI requests a day per model, and usually none on repeat visits. The order can change while scores arrive; the page says so.
+
+### Rules
+- Skills must match as whole words: "Java" never matches "JavaScript". Skills of one or two letters (Go, R, C) match only in their exact case.
+- `GET /api/jobs/recommended` is declared before `/{job_id}` and shares the feed rate limit.
+- No resume, or a skill profile with no titles and no skills, returns a notice instead of an error.
 
 ---
 

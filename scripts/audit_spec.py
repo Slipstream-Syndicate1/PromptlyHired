@@ -147,6 +147,22 @@ ck("feed", "search bar on the Jobs page", 'type="search"' in read("frontend/src/
 ck("feed", "feed shown on the Jobs page", "JobFeed" in read("frontend/src/pages/Jobs.jsx"))
 ck("feed", "Adzuna keys are secrets in the blueprint", "ADZUNA_APP_KEY" in read("render.yaml"))
 
+head("Recommended jobs - from resume skills")
+rec_py = read("backend/app/services/recommendations.py")
+rec_router = read("backend/app/routers/jobs.py")
+ck("recommend", "recommendations endpoint", '"/recommended"' in rec_router)
+ck("recommend", "declared before the job id route",
+   '"/recommended"' in rec_router and rec_router.find('"/recommended"') < rec_router.find('"/{job_id}"'))
+ck("recommend", "searches through the shared feed cache", "job_feed.search" in rec_py)
+ck("recommend", "searches the resume job titles", "job_titles" in rec_py)
+ck("recommend", "ranks by skills mentioned", "def match_skills" in rec_py)
+ck("recommend", "jobs already applied to are left out", "Application.job_id" in rec_py)
+ck("recommend", "preferred location and remote setting",
+   "preferred_location" in models and "include_remote" in models)
+ck("recommend", "section on the Jobs page", "RecommendedJobs" in read("frontend/src/pages/Jobs.jsx"))
+ck("recommend", "AI scores only the top few", "AI_SCORED" in read("frontend/src/components/RecommendedJobs.jsx"))
+ck("recommend", "tests", (ROOT / "backend/tests/test_recommendations.py").exists())
+
 head("History is derived, not stored")
 ck("history", "no History table", "class History" not in models)
 documents_router = read("backend/app/routers/documents.py")

@@ -1,0 +1,35 @@
+/* "Recommended for you" on the Jobs page. Kept out of styles.css, which the UI
+   branches rewrite. */
+
+.rec {
+  margin-bottom: 22px;
+}
+
+.rec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin-bottom: 8px;
+}
+
+.rec-title {
+  margin: 0;
+}
+
+.rec-based-on {
+  margin: 0;
+}
+
+.rec-item + .rec-item {
+  margin-top: 4px;
+}
+
+/* Why this job is recommended, sitting directly above its card. */
+.rec-reason {
+  margin: 0 0 6px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}

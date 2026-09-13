@@ -172,6 +172,9 @@ export const api = {
   // Live jobs from Adzuna and Himalayas. params: { q, location, job_type,
   // remote_only, posted_within_days, page }. Blank values are left out.
   jobFeed: (params = {}) => request(`/api/jobs/feed${qs(params)}`),
+  // Jobs fitting the active resume, ranked by skills mentioned. Each item is
+  // { job, matched_skills, relevance }; no AI call happens here.
+  recommendedJobs: () => request('/api/jobs/recommended'),
   addJobFromUrl: (url) => request('/api/jobs/from-url', { method: 'POST', body: { url } }),
   addJobFromText: (payload) =>
     request('/api/jobs/from-text', { method: 'POST', body: payload }),
