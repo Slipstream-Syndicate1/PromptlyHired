@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import './ResumePanel.css'
 import { api } from '../api/client'
 import ResumePreview from './ResumePreview.jsx'
 import { exportDocumentPdf } from '../lib/exportPdf.js'

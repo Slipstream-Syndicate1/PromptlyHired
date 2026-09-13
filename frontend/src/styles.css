@@ -1243,237 +1243,33 @@ a.btn {
   .tour-arrow-path { animation: none; stroke-dashoffset: 0; }
 }
 
-/* --- Master resume + tailored document editor ------------------------- */
-.profile-page,
+/* --- Tailored document editor ----------------------------------------- */
 .document-page {
   width: min(1180px, calc(100% - 48px));
   max-width: none;
 }
-
-.master-resume-card { overflow: visible; }
-.master-resume-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 18px;
-}
-.master-resume-heading .job-company { margin: 4px 0 0; max-width: 680px; }
-.master-resume-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.resume-workspace,
 .document-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, .9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(380px, .9fr);
   gap: 22px;
   align-items: start;
+  margin-top: 16px;
 }
-.resume-editor-pane { min-width: 0; }
-.resume-preview-pane,
 .document-preview-pane {
   position: sticky;
   top: 82px;
   min-width: 0;
 }
-.resume-preview-label {
-  margin: 0 0 8px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-.master-section {
-  margin: 18px 0;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-.master-section-title-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.master-section-title-input {
-  flex: 1;
-  font-weight: 750;
-}
-.btn.compact { padding: 8px 10px; }
-.resume-mobile-tabs { display: none; }
-
-.resume-paper {
-  width: 100%;
-  min-height: 560px;
-  padding: 30px 32px 28px;
-  background: #fff;
-  color: #111;
-  border: 1px solid #d7dce3;
-  border-radius: 2px;
-  box-shadow: 0 16px 38px rgba(0, 0, 0, .18);
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 11px;
-  line-height: 1.16;
-}
-.resume-paper-header { text-align: center; margin-bottom: 8px; }
-.resume-paper-header h1 {
-  margin: 0 0 2px;
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 28px;
-  line-height: 1.05;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
-}
-.resume-contact-line { margin: 0; font-size: 10.5px; }
-.resume-paper-headline { margin: 3px 0 0; font-size: 10.8px; font-style: italic; }
-.resume-paper-section { margin-top: 8px; }
-.resume-paper-section h2 {
-  margin: 0 0 4px;
-  padding-bottom: 1px;
-  border-bottom: 1px solid #333;
-  color: #111;
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 14px;
-  line-height: 1.05;
-  font-weight: 400;
-  font-variant: small-caps;
-  letter-spacing: .01em;
-  text-transform: none;
-}
-.resume-paper-section > p { margin: 0 10px 4px; }
-.resume-entry { margin: 0 10px 6px; }
-.resume-entry-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.resume-entry-left { min-width: 0; }
-.resume-entry-right { flex: 0 0 auto; text-align: right; white-space: nowrap; }
-.resume-entry-primary { font-size: 11.2px; }
-.resume-entry-secondary { margin-top: 1px; font-size: 10.8px; }
-.resume-entry ul,
-.resume-generic-bullets { margin: 2px 0 0 20px; padding-left: 11px; }
-.resume-entry li,
-.resume-generic-bullets li { margin: 0 0 1px; }
-.resume-paper-skills { margin: 0 10px; font-size: 10.8px; }
-.resume-paper-skills p { margin: 0 0 1px; }
-.resume-entry-editor {
-  margin: 12px 0;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 2px);
-  background: var(--surface);
-}
-.resume-entry-editor-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(150px, .8fr);
-  gap: 10px 12px;
-}
-.resume-entry-editor-grid .field { margin: 0; }
-.resume-entry-editor-wide { grid-column: 1 / -1; }
-.resume-entry-bullets { margin: 8px 0 10px; }
-.field-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; }
+.document-editor-pane { margin: 0; }
 .cover-letter-paper { font-size: 13px; line-height: 1.65; }
 .cover-letter-paper p { margin: 0 0 16px; }
 
-.document-workspace {
-  grid-template-columns: minmax(0, 1fr) minmax(380px, .9fr);
-  margin-top: 16px;
-}
-.document-editor-pane { margin: 0; }
-
 @media (max-width: 900px) {
-  .profile-page, .document-page { width: min(100% - 28px, 760px); }
-  .resume-workspace,
+  .document-page { width: min(100% - 28px, 760px); }
   .document-workspace { grid-template-columns: 1fr; }
-  .resume-preview-pane,
-  .document-preview-pane { position: static; }
-  .resume-mobile-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
-  .resume-workspace .mobile-hidden { display: none; }
-  .document-workspace .document-preview-pane { display: block; }
-}
-
-@media (min-width: 901px) {
-  .resume-workspace .mobile-hidden { display: block; }
+  .document-preview-pane { position: static; display: block; }
 }
 
 @media (max-width: 520px) {
-  .profile-page, .document-page { width: auto; }
-  .master-resume-heading { flex-direction: column; }
-  .resume-paper { padding: 26px 24px; min-height: 480px; }
-  .master-section-title-row { align-items: stretch; flex-direction: column; }
-}
-@media (max-width: 620px) {
-  .resume-entry-editor-grid { grid-template-columns: 1fr; }
-  .resume-entry-editor-wide { grid-column: auto; }
-  .resume-entry-row { gap: 7px; }
-  .resume-entry-right { white-space: normal; }
-}
-
-/* --- Exact reference resume editor ------------------------------------ */
-.exact-header-editor { margin-top: 0; }
-.exact-contact-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-}
-.exact-contact-grid .field { margin: 0; }
-.resume-optional-fields {
-  margin: 12px 0 18px;
-  padding: 12px 14px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-}
-.resume-optional-fields summary {
-  cursor: pointer;
-  font-weight: 700;
-  color: var(--muted);
-}
-.resume-optional-fields[open] summary { margin-bottom: 12px; }
-.skill-row-editor {
-  display: grid;
-  grid-template-columns: 126px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 9px;
-}
-.skill-row-editor > span { margin: 0; }
-.exact-skills-editor { margin-bottom: 0; }
-
-/* Match the supplied Jake Ryan reference more tightly in the live preview. */
-.classic-resume {
-  padding: 27px 29px 25px;
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 10.35px;
-  line-height: 1.13;
-}
-.classic-resume .resume-paper-header { margin-bottom: 12px; }
-.classic-resume .resume-paper-header h1 {
-  margin-bottom: 1px;
-  font-size: 28.5px;
-  line-height: 1;
-}
-.classic-resume .resume-contact-line { font-size: 10.2px; }
-.classic-resume .resume-paper-section { margin-top: 7px; }
-.classic-resume .resume-paper-section h2 {
-  margin-bottom: 4px;
-  padding-bottom: 1px;
-  border-bottom: .8px solid #444;
-  font-size: 13.4px;
-  line-height: 1;
-  font-variant: small-caps;
-  letter-spacing: .01em;
-}
-.classic-resume .resume-entry { margin: 0 10px 5px 10px; }
-.classic-resume .resume-entry-primary { font-size: 10.8px; }
-.classic-resume .resume-entry-secondary { margin-top: 0; font-size: 10.35px; }
-.classic-resume .resume-entry ul { margin-top: 1px; margin-left: 19px; padding-left: 10px; }
-.classic-resume .resume-entry li { margin-bottom: .5px; }
-.classic-resume .resume-paper-skills { font-size: 10.35px; }
-
-@media (max-width: 620px) {
-  .exact-contact-grid { grid-template-columns: 1fr; }
-  .skill-row-editor { grid-template-columns: 1fr; gap: 5px; }
+  .document-page { width: auto; }
 }

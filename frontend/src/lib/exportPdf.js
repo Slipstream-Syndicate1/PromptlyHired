@@ -12,10 +12,10 @@ function clean(value) {
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"')
     .replace(/\u2026/g, '...')
-    .replace(/[^\x20-\x7E\n]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
 }
 
-function escHtml(value) {
+function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -24,11 +24,29 @@ function escHtml(value) {
 }
 
 function pdfText(value) {
-  return clean(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/\r?\n/g, ' ')
+  // PDF Type1 fonts with WinAnsiEncoding can render Western European accents,
+  // but the content stream must contain WinAnsi bytes. Emit non-ASCII bytes as
+  // octal escapes so the PDF stays ASCII-safe while preserving characters such
+  // as é, ñ, ü and ç.
+  const winAnsiSpecial = new Map([
+    ['€', 0x80], ['‚', 0x82], ['ƒ', 0x83], ['„', 0x84], ['…', 0x85],
+    ['†', 0x86], ['‡', 0x87], ['ˆ', 0x88], ['‰', 0x89], ['Š', 0x8A],
+    ['‹', 0x8B], ['Œ', 0x8C], ['Ž', 0x8E], ['‘', 0x91], ['’', 0x92],
+    ['“', 0x93], ['”', 0x94], ['•', 0x95], ['–', 0x96], ['—', 0x97],
+    ['˜', 0x98], ['™', 0x99], ['š', 0x9A], ['›', 0x9B], ['œ', 0x9C],
+    ['ž', 0x9E], ['Ÿ', 0x9F],
+  ])
+
+  return clean(value).replace(/\r?\n/g, ' ').split('').map((ch) => {
+    if (ch === '\\') return '\\\\'
+    if (ch === '(') return '\\('
+    if (ch === ')') return '\\)'
+    const code = ch.charCodeAt(0)
+    const byte = winAnsiSpecial.get(ch) ?? (code <= 0xFF ? code : null)
+    if (byte == null) return '?'
+    if (byte >= 0x20 && byte <= 0x7E) return ch
+    return `\\${byte.toString(8).padStart(3, '0')}`
+  }).join('')
 }
 
 function hasText(value) {
@@ -246,8 +264,10 @@ function buildResumePdf(doc = {}) {
     }
   }
 
-  // The template is intentionally one page. If content runs long, it remains
-  // cleanly clipped instead of introducing browser-generated page chrome.
+  // Keep this template intentionally one page, but never silently clip content.
+  // The caller will warn the user and cancel export when content runs below the
+  // printable area.
+  const exceedsOnePage = y < 28
   const stream = commands.join('\n')
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -258,7 +278,7 @@ function buildResumePdf(doc = {}) {
     '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic /Encoding /WinAnsiEncoding >>',
   ]
-  return makePdfDocument(objects)
+  return { blob: makePdfDocument(objects), exceedsOnePage }
 }
 
 const PRINT_STYLES = `
@@ -269,15 +289,19 @@ const PRINT_STYLES = `
 
 function coverLetterHtml(doc) {
   return `
-    <p>${escHtml(doc.greeting)}</p>
-    ${(doc.paragraphs || []).filter(hasText).map((p) => `<p>${escHtml(p)}</p>`).join('')}
-    <p>${escHtml(doc.closing)}</p>
+    <p>${esc(doc.greeting)}</p>
+    ${(doc.paragraphs || []).filter(hasText).map((p) => `<p>${esc(p)}</p>`).join('')}
+    <p>${esc(doc.closing)}</p>
   `
 }
 
 export function exportDocumentPdf(kind, doc) {
   if (kind === 'resume') {
-    const blob = buildResumePdf(doc)
+    const { blob, exceedsOnePage } = buildResumePdf(doc)
+    if (exceedsOnePage) {
+      alert('This resume runs past one page. Shorten or remove some content, then export again.')
+      return
+    }
     downloadBlob(blob, safeFilename(doc?.full_name))
     return
   }
@@ -291,7 +315,7 @@ export function exportDocumentPdf(kind, doc) {
     return
   }
   win.document.write(
-    `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title><style>${PRINT_STYLES}</style></head><body>${body}</body></html>`,
+    `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${PRINT_STYLES}</style></head><body>${body}</body></html>`,
   )
   win.document.close()
   win.onload = () => { win.focus(); win.print() }
