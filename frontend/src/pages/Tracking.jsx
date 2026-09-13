@@ -420,16 +420,18 @@ function Column({ column, items, sectionRef, onOpen, onRemove, onSetStatus }) {
           <p>{column.hint}</p>
         </div>
         <span className="tracking-count">{items.length}</span>
+      </div>
+      <div className="tracking-add-job-row">
         <button
           type="button"
-          className="tracking-column-add"
+          className="btn tracking-add-job"
           onClick={() => onOpen('add', null, column)}
           aria-label={`Add a job to ${column.label}`}
-          title={`Add a job to ${column.label}`}
         >
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" />
           </svg>
+          <span>Add a job</span>
         </button>
       </div>
       <div className="tracking-column-body" ref={setNodeRef}>
