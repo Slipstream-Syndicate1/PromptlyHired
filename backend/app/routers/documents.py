@@ -18,7 +18,7 @@ from app.schemas import (
     GeneratedDocumentOut,
     HistoryEntryOut,
 )
-from app.services import ai
+from app.services import ai, tailored_resume
 from app.services.user_state import decorate_jobs
 
 router = APIRouter(prefix="/api", tags=["documents"])
@@ -99,22 +99,24 @@ def generate_document(
         )
     )
 
-    generator = (
-        ai.generate_resume if payload.kind is DocumentKind.resume else ai.generate_cover_letter
-    )
+    job_args = (job.title, job.company.name, job.description or "", _match_summary(match), payload.instructions)
+    master = resume.master_content if payload.kind is DocumentKind.resume else None
     try:
-        result = generator(
-            _resume_source_text(resume),
-            job.title,
-            job.company.name,
-            job.description or "",
-            _match_summary(match),
-            payload.instructions,
-        )
+        if master:
+            # Quick edits to a copy of the master: facts stay exactly as the user saved them.
+            edits = ai.tailor_master_resume(tailored_resume.indexed_text(master), *job_args)
+            content = tailored_resume.apply_tailoring(master, edits)
+        elif payload.kind is DocumentKind.resume:
+            result = ai.generate_resume(_resume_source_text(resume), *job_args)
+            content = tailored_resume.normalise(result.model_dump())
+        else:
+            content = ai.generate_cover_letter(_resume_source_text(resume), *job_args).model_dump()
     except ai.AIUnavailable as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
         ) from exc
+    except ai.AIRateLimited as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     except ai.AIError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
@@ -123,8 +125,43 @@ def generate_document(
         job_id=job_id,
         resume_id=resume.id,
         kind=payload.kind,
-        content=result.model_dump(),
+        content=content,
         model_used=ai.last_model_used(),
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+@router.post(
+    "/jobs/{job_id}/documents/from-master",
+    response_model=GeneratedDocumentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def copy_master_resume(job_id: int, user: CurrentUser, db: DbSession) -> GeneratedDocument:
+    """Start this job's resume as an exact copy of the master resume.
+
+    No AI and no quota. The copy is a separate document, so editing it for this
+    job never changes the master. Works for hand-logged jobs too, since it needs
+    no advert.
+    """
+    if db.get(Job, job_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    resume = require_active_resume(db, user)
+    if not resume.master_content:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Save your master resume on the Profile page first.",
+        )
+
+    document = GeneratedDocument(
+        user_id=user.id,
+        job_id=job_id,
+        resume_id=resume.id,
+        kind=DocumentKind.resume,
+        content=tailored_resume.normalise(resume.master_content),
+        model_used=tailored_resume.MASTER_COPY,
     )
     db.add(document)
     db.commit()

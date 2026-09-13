@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { exportDocumentPdf } from '../lib/exportPdf.js'
+import ResumeEditor from '../components/ResumeEditor.jsx'
 import ResumePreview from '../components/ResumePreview.jsx'
+
+// model_used on a resume copied straight from the master resume, without AI.
+const MASTER_COPY = 'master-copy'
 
 /**
  * Structured editor for a generated document.
@@ -50,47 +54,10 @@ function BulletList({ label, items, onChange }) {
   )
 }
 
+// The same fields as the master resume, so a job's copy edits exactly like the
+// master. Its edits stay on this document and never reach the master.
 function ResumeForm({ value, patch }) {
-  return (
-    <>
-      <TextField label="Full name" value={value.full_name} onChange={(v) => patch({ full_name: v })} />
-      <TextField label="Headline" value={value.headline} onChange={(v) => patch({ headline: v })} />
-      <TextField label="Summary" rows={4} value={value.summary} onChange={(v) => patch({ summary: v })} />
-
-      {(value.sections || []).map((section, i) => (
-        <div className="card nested" key={i}>
-          <TextField
-            label="Section heading"
-            value={section.heading}
-            onChange={(v) =>
-              patch({
-                sections: value.sections.map((s, idx) =>
-                  idx === i ? { ...s, heading: v } : s,
-                ),
-              })
-            }
-          />
-          <BulletList
-            label="Bullets"
-            items={section.bullets || []}
-            onChange={(bullets) =>
-              patch({
-                sections: value.sections.map((s, idx) =>
-                  idx === i ? { ...s, bullets } : s,
-                ),
-              })
-            }
-          />
-        </div>
-      ))}
-
-      <BulletList
-        label="Skills"
-        items={value.skills || []}
-        onChange={(skills) => patch({ skills })}
-      />
-    </>
-  )
+  return <ResumeEditor value={value} onChange={patch} />
 }
 
 function CoverLetterForm({ value, patch }) {
@@ -154,7 +121,7 @@ export default function DocumentEditor() {
       setDoc(updated)
       setDraft(updated.content)
       setDirty(false)
-      setMessage('Reverted to the generated version.')
+      setMessage(fromMaster ? 'Reverted to the copy of your master resume.' : 'Reverted to the generated version.')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -168,6 +135,7 @@ export default function DocumentEditor() {
   }
 
   const isResume = doc?.kind === 'resume'
+  const fromMaster = doc?.model_used === MASTER_COPY
   const title = useMemo(() => (isResume ? 'Tailored resume' : 'Cover letter'), [isResume])
 
   if (error && !doc) {
@@ -193,8 +161,20 @@ export default function DocumentEditor() {
       {message && <div className="alert info">{message}</div>}
 
       <div className="alert info">
-        Read this through before you use it. It is a first draft built from your
-        resume — check every claim is one you would stand behind in an interview.
+        {fromMaster ? (
+          <>
+            A copy of your master resume for this job. Make your edits for this job here —
+            they stay with this job and never change your master resume. Read it through
+            before you use it.
+          </>
+        ) : (
+          <>
+            Read this through before you use it. It is a first draft built from your
+            {isResume ? ' master resume' : ' resume'} — check every claim is one you would
+            stand behind in an interview.
+            {isResume && ' Edits here stay with this job and never change your master resume.'}
+          </>
+        )}
       </div>
 
       <div className="document-workspace">
@@ -233,7 +213,7 @@ export default function DocumentEditor() {
         </button>
         {doc.edited_content && (
           <button className="btn" onClick={reset} disabled={busy}>
-            Reset to generated
+            {fromMaster ? 'Reset to master copy' : 'Reset to generated'}
           </button>
         )}
         <button className="btn danger" onClick={remove} disabled={busy}>

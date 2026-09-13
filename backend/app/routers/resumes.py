@@ -11,6 +11,7 @@ from app.deps import CurrentUser, DbSession
 from app.models import Resume, SkillProfile, User
 from app.rate_limit import ai_rate_limit
 from app.schemas import (
+    MasterResumeContent,
     MasterResumeUpdate,
     ResumeOut,
     SkillProfileOut,
@@ -18,7 +19,7 @@ from app.schemas import (
     clean_list,
     clean_text,
 )
-from app.services import ai, resume_text
+from app.services import ai, resume_text, tailored_resume
 from app.services.storage import UploadError, delete_stored_file, store_resume
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
@@ -103,9 +104,16 @@ async def upload_resume(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
+    # The master resume is the user's own work, so a new upload carries it over
+    # instead of starting them from a blank one.
+    master_content = None
     for previous in db.scalars(
-        select(Resume).where(Resume.user_id == user.id, Resume.is_active.is_(True))
+        select(Resume)
+        .where(Resume.user_id == user.id, Resume.is_active.is_(True))
+        .order_by(Resume.uploaded_at.desc())
     ):
+        if master_content is None and previous.master_content:
+            master_content = previous.master_content
         previous.is_active = False
 
     resume = Resume(
@@ -114,6 +122,7 @@ async def upload_resume(
         original_filename=(file.filename or "resume")[:255],
         content_type=file.content_type,
         extracted_text=text,
+        master_content=master_content,
         is_active=True,
     )
     db.add(resume)
@@ -271,3 +280,38 @@ def save_master_resume(
     db.commit()
     db.refresh(resume)
     return resume
+
+
+@router.post(
+    "/{resume_id}/master/draft",
+    response_model=MasterResumeContent,
+    dependencies=[Depends(ai_rate_limit)],
+)
+def draft_master_from_upload(resume_id: int, user: CurrentUser, db: DbSession) -> dict:
+    """Read the uploaded CV into the master resume layout, so it need not be retyped.
+
+    Returns a draft and saves nothing: the user checks it in the editor, then
+    saves it as their master resume.
+    """
+    resume = db.scalar(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user.id)
+    )
+    if resume is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found.")
+    if not (resume.extracted_text or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No text could be read from this resume. Fill in the master resume by hand.",
+        )
+
+    try:
+        result = ai.structure_resume(resume.extracted_text)
+    except ai.AIUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except ai.AIRateLimited as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except ai.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return tailored_resume.normalise(result.model_dump())

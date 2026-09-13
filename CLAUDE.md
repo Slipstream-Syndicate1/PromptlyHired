@@ -138,7 +138,8 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 - `preferred_location` and `include_remote` steer job recommendations; blank location means use the resume location.
 
 **Resume** (the uploaded source document)
-- id, user_id (FK), file_url, original_filename, content_type, uploaded_at, is_active
+- id, user_id (FK), file_url, original_filename, content_type, uploaded_at, is_active, master_content (JSONB, nullable)
+- `master_content` is the master resume (see "Master resume"). A new upload copies it from the previous active resume.
 - Raw extracted text is stored alongside, so match scoring doesn't re-read the PDF on every call.
 - A user may upload a new resume; the previous one is kept but deactivated, because generated documents reference the resume they were built from.
 
@@ -251,6 +252,16 @@ Every job card carries a clear outbound link to the original posting. Requiremen
 
 Generated documents open in a structured editor — fields and bullet lists, not a freeform textarea. The user revises, then exports to PDF. Both the AI original and the edited version are retained.
 
+### Master resume
+
+The user's permanent base resume, edited on **Profile** in the classic one-page layout (Education, Experience and Projects entries with dates and locations, then skill lines). Stored as `resumes.master_content`.
+
+- **Saved edits are permanent.** Every resume made for a job starts from the saved master. **Fill from uploaded CV** reads the uploaded CV into the layout with one AI request and saves nothing until the user clicks Save master. Uploading a new CV carries the saved master over.
+- **A job's resume is a separate copy.** Its edits are stored on that GeneratedDocument and never change the master. Two ways to make one, from the job dialog or the job page:
+  - **Start from master resume**: an exact copy, no AI, no quota (`POST /api/jobs/{id}/documents/from-master`). Works for hand-logged jobs too. `model_used` is `master-copy`.
+  - **Tailor resume with AI**: the model returns *edits* keyed to the master's section and entry numbers (reworded bullets, a new order, trimmed skill lines), not a resume. `services/tailored_resume.apply_tailoring` writes them onto a copy of the master, so names, schools, employers, dates, locations and contact details always come from the master. Unknown or repeated numbers are ignored, nothing is dropped, an entry never gets more bullets than the master gave it (extra bullets are how a skills list turns into claimed accomplishments), and skills must already be in the master. Without a saved master, the resume is generated from the CV text in the same layout.
+- The master, a job's copy and the preview all use one editor, `components/ResumeEditor.jsx`.
+
 ---
 
 ## Recommended jobs
@@ -310,7 +321,7 @@ Three distinct calls, each with its own schema and effort level.
 
 **2. Match analysis** — on job card open. Input: cached resume + this job's description. Output: percentage, met requirements, missing requirements, short rationale. Cached in JobMatch.
 
-**3. Document generation** — on user request. Input: cached resume + job description + the match analysis. Output: structured resume or cover letter JSON. Stored in GeneratedDocument, then edited by the user.
+**3. Document generation** — on user request. Input: cached resume + job description + the match analysis. Output: structured resume or cover letter JSON. Stored in GeneratedDocument, then edited by the user. With a saved master resume, a resume is edits applied to a copy of the master, never a rewrite of its facts.
 
 Every one of these returns schema-validated structured output. Scores are clamped server-side to 0-100 regardless of what the model returns.
 
