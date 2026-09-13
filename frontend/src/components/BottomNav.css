@@ -3,7 +3,9 @@
    styles.css collapses the desktop sidebar to an invisible 18px strip, so
    nobody could tell a menu was there. This keeps a slim rail of icons visible
    and clickable, and still expands to the full labelled menu on hover or
-   keyboard focus.
+   keyboard focus (:focus-visible, not :focus-within: a mouse click leaves
+   the clicked link focused, which would otherwise hold the menu open after
+   navigating).
 
    Kept out of styles.css, which the UI branches rewrite. Selectors use
    `nav.nav` so they outrank the `.nav` rules there whatever order the CSS
@@ -50,7 +52,7 @@
   }
 
   nav.nav:hover a,
-  nav.nav:focus-within a {
+  nav.nav:has(a:focus-visible) a {
     width: 200px;
     justify-content: flex-start;
     gap: 12px;
@@ -58,7 +60,7 @@
   }
 
   nav.nav:hover a span,
-  nav.nav:focus-within a span {
+  nav.nav:has(a:focus-visible) a span {
     max-width: 160px;
     opacity: 1;
   }
