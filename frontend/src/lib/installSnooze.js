@@ -26,3 +26,14 @@ export function isHidden(stored, now = Date.now()) {
 export function snoozeValue(now = Date.now()) {
   return String(now)
 }
+
+/**
+ * Whether a stored value only hides the banner because the app was installed.
+ *
+ * Uninstalling does not clear browser storage, so that value would hide the
+ * banner forever. The browser fires its install event only when the app is not
+ * installed, which is the moment to forget it.
+ */
+export function hiddenOnlyBecauseInstalled(stored) {
+  return stored === INSTALLED
+}

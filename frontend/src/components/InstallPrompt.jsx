@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { isIos, isStandalone } from '../api/platform'
-import { INSTALLED, isHidden, snoozeValue } from '../lib/installSnooze.js'
+import {
+  INSTALLED,
+  hiddenOnlyBecauseInstalled,
+  isHidden,
+  snoozeValue,
+} from '../lib/installSnooze.js'
 
 // Kept from the original name so existing dismissals are read, not ignored.
 const STORAGE_KEY = 'jobtrail.install_dismissed'
@@ -21,6 +26,14 @@ function writeStored(value) {
   }
 }
 
+function forgetStored() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    /* nothing to do: the banner shows either way */
+  }
+}
+
 /**
  * Offers to install the app on the home screen, where it opens full screen
  * like a regular app.
@@ -36,10 +49,19 @@ export default function InstallPrompt() {
   const [hidden, setHidden] = useState(() => isHidden(readStored()))
 
   useEffect(() => {
-    if (isStandalone() || isHidden(readStored())) return
+    const stored = readStored()
+    // Keep listening when the app was installed: the browser fires its install
+    // event only when it is not installed, so that event means it was removed.
+    // A "Not now" snooze is a deliberate choice and is still respected.
+    if (isStandalone() || (isHidden(stored) && !hiddenOnlyBecauseInstalled(stored))) return
 
     const onBeforeInstall = (event) => {
       event.preventDefault()
+      // The app is not installed after all, so offer it again.
+      if (hiddenOnlyBecauseInstalled(readStored())) {
+        forgetStored()
+        setHidden(false)
+      }
       setDeferred(event)
     }
     const onInstalled = () => {
