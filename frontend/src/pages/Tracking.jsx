@@ -567,14 +567,20 @@ export default function Tracking() {
     }
   }
 
+  // A stage change clears the next event. The event was about the stage the
+  // card is leaving - an assessment date means nothing at Offer, a follow-up
+  // reminder is moot once there's an interview - and the label the board
+  // shows comes from the stage, so carrying the date over would quietly
+  // re-describe it. New stage, new "next".
   const setStatus = (item, status) =>
     withRollback(async () => {
       const { application, job } = item
       if (application) {
+        const cleared = { status, next_action_date: null, next_action: null }
         setApplications((current) =>
-          current.map((a) => (a.id === application.id ? { ...a, status } : a)),
+          current.map((a) => (a.id === application.id ? { ...a, ...cleared } : a)),
         )
-        replaceApplication(await api.updateApplication(application.id, { status }))
+        replaceApplication(await api.updateApplication(application.id, cleared))
       } else {
         // Wishlist -> pipeline: the application row is created now. The
         // saved flag is left alone; Saved is the shortlist, not a stage.
