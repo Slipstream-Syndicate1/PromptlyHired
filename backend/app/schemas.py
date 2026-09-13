@@ -352,9 +352,20 @@ class DocumentUpdate(BaseModel):
 
 
 class HistoryEntryOut(BaseModel):
+    """One job in the record of work done.
+
+    A job earns an entry by being applied to, by having documents generated for
+    it, or both - so applying without generating anything is still logged.
+    """
+
     job: JobOut
-    documents: list[GeneratedDocumentOut]
-    last_generated_at: datetime
+    documents: list[GeneratedDocumentOut] = Field(default_factory=list)
+    # The tracked application, when there is one. Its stage is shown on the entry.
+    application: "ApplicationOut | None" = None
+    # Null for a job that was applied to but never had documents generated.
+    last_generated_at: datetime | None = None
+    # The most recent of the two, which is what History is ordered by.
+    last_activity_at: datetime
 
 
 # --- Applications ---------------------------------------------------------
@@ -562,3 +573,4 @@ class InterviewPrepOut(BaseModel):
 # JobDetailOut refers to GeneratedDocumentOut and ApplicationOut, both defined
 # after it. Rebuilt once, here, where every name it needs exists.
 JobDetailOut.model_rebuild()
+HistoryEntryOut.model_rebuild()
