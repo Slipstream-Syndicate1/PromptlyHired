@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import JobFeed from '../components/JobFeed.jsx'
+import RecommendedJobs from '../components/RecommendedJobs.jsx'
 import JobCard from '../components/JobCard.jsx'
 import LogApplication from '../components/LogApplication.jsx'
 
@@ -180,6 +181,8 @@ export default function Jobs() {
           generation are both built on it. <Link to="/profile">Go to Profile →</Link>
         </div>
       )}
+
+      {!busy && resume && <RecommendedJobs />}
 
       <JobFeed onSearchChange={setSearch} />
 

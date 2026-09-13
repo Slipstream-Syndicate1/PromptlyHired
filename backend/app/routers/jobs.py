@@ -27,9 +27,11 @@ from app.schemas import (
     JobFeedOut,
     JobMatchOut,
     JobOut,
+    RecommendationsOut,
+    RecommendedJobOut,
     clean_text,
 )
-from app.services import ai, job_feed, job_url
+from app.services import ai, job_feed, job_url, recommendations
 from app.services.user_state import decorate_jobs
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -268,6 +270,33 @@ def search_feed(
         has_more=result.has_more,
         sources=result.sources,
         notice=result.notice,
+    )
+
+
+@router.get(
+    "/recommended",
+    response_model=RecommendationsOut,
+    dependencies=[Depends(feed_rate_limit)],
+)
+def recommended_jobs(user: CurrentUser, db: DbSession) -> RecommendationsOut:
+    """Jobs from the free sources that fit the skills in the active resume.
+
+    Declared before /{job_id} so "recommended" is never read as an id. Ranked
+    by the skills each job mentions; the page asks POST /{job_id}/match for an
+    AI score on the top few, which is cached like any other match.
+    """
+    found = recommendations.recommend(db, user)
+    decorated = decorate_jobs(db, user, [item.job for item in found.items])
+    return RecommendationsOut(
+        jobs=[
+            RecommendedJobOut(job=job, matched_skills=item.matched_skills, relevance=item.relevance)
+            for item, job in zip(found.items, decorated)
+        ],
+        searched_titles=found.searched_titles,
+        location=found.location,
+        include_remote=found.include_remote,
+        sources=found.sources,
+        notice=found.notice,
     )
 
 

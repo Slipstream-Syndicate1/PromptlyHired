@@ -112,14 +112,19 @@ class UserOut(BaseModel):
     email: EmailStr
     name: str
     profile_picture_url: str | None = None
+    preferred_location: str | None = None
+    include_remote: bool = True
     created_at: datetime
 
 
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     profile_picture_url: str | None = Field(default=None, max_length=1024)
+    # Blank or null clears it, so recommendations use the resume location again.
+    preferred_location: str | None = Field(default=None, max_length=120)
+    include_remote: bool | None = None
 
-    @field_validator("name", "profile_picture_url")
+    @field_validator("name", "profile_picture_url", "preferred_location")
     @classmethod
     def _clean(cls, v: str | None) -> str | None:
         return clean_text(v)
@@ -228,6 +233,23 @@ class JobFeedOut(BaseModel):
     page: int
     has_more: bool
     # Which sources answered this search. Empty means the live search failed.
+    sources: list[str]
+    notice: str | None = None
+
+
+class RecommendedJobOut(BaseModel):
+    job: JobOut
+    # The resume skills this job mentions - shown as the reason it is recommended.
+    matched_skills: list[str]
+    # 0-100: how many of the top resume skills the job mentions. Not an AI score.
+    relevance: int
+
+
+class RecommendationsOut(BaseModel):
+    jobs: list[RecommendedJobOut]
+    searched_titles: list[str]
+    location: str | None = None
+    include_remote: bool = True
     sources: list[str]
     notice: str | None = None
 
