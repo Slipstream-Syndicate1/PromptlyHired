@@ -236,9 +236,10 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSave
     setEditingDetails(false)
   }
 
-  // The column's non-default status (online assessment, withdrawn) is a
-  // menu action, and gets a chip so the card says which one it is.
-  const altStatus = column.statuses[1]
+  // A column that holds two statuses (Interview: interview / online
+  // assessment; Closed: rejected / withdrawn) shows both on the card as a
+  // segmented control - a two-way choice shouldn't be buried in a menu.
+  const shared = application && column.statuses.length > 1
   const overdue = application?.next_action_date && eventTime(application).getTime() < Date.now()
 
   return (
@@ -264,10 +265,24 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSave
         {job.location ? ` · ${job.location}` : ''}
       </p>
 
+      {shared && (
+        <div className="tracking-substage" role="radiogroup" aria-label="Stage">
+          {column.statuses.map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={application.status === value}
+              className={application.status === value ? 'on' : ''}
+              onClick={() => application.status !== value && onSetStatus(item, value)}
+            >
+              {statusLabel(value)}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="job-meta">
-        {application && altStatus && application.status === altStatus && (
-          <span className="chip status">{statusLabel(application.status)}</span>
-        )}
         {application?.applied_date && (
           <span className="chip" title={`Applied ${application.applied_date}`}>
             Applied {relativeDay(application.applied_date)}
@@ -339,17 +354,6 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSave
                     }}
                   >
                     {application.next_action_date ? 'Edit event' : 'Add event'}
-                  </button>
-                )}
-                {application && altStatus && (
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onSetStatus(item, application.status === altStatus ? column.statuses[0] : altStatus)
-                    }}
-                  >
-                    Mark as {statusLabel(application.status === altStatus ? column.statuses[0] : altStatus).toLowerCase()}
                   </button>
                 )}
                 <button

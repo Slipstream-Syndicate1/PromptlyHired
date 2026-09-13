@@ -1326,13 +1326,38 @@ a.btn {
 .stage-offer { --stage: var(--good); }
 .stage-closed { --stage: var(--signal); }
 
-/* Which of a shared column's two statuses this card is in (online
-   assessment in Interview, withdrawn in Closed). Only shown for the
-   non-default one; the column name already says the default. */
-.chip.status {
-  color: var(--stage);
-  border-color: color-mix(in srgb, var(--stage) 40%, transparent);
+/* Which of a shared column's two statuses this card is in (Interview:
+   interview / online assessment; Closed: rejected / withdrawn). Both
+   options are always visible; the current one is filled. */
+.tracking-substage {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.tracking-substage button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 600;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+
+.tracking-substage button:hover {
+  color: var(--text);
+}
+
+.tracking-substage button.on {
+  background: color-mix(in srgb, var(--stage) 18%, transparent);
+  color: var(--stage);
+  cursor: default;
 }
 
 .tracking-stats {
