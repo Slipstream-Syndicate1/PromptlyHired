@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -26,10 +26,15 @@ from app.models import (
     ApplicationEvent,
     ApplicationStatus,
     Communication,
+    InterviewPrep,
     Job,
+    JobMatch,
     Resume,
 )
-from app.routers.jobs import SOURCE_MANUAL, _get_or_create_company
+from app.rate_limit import ai_rate_limit
+from app.routers.documents import _match_summary, _resume_source_text
+from app.routers.jobs import SOURCE_MANUAL, _get_or_create_company, require_description
+from app.routers.resumes import require_active_resume
 from app.schemas import (
     ApplicationCreate,
     ApplicationEventOut,
@@ -39,13 +44,14 @@ from app.schemas import (
     CommunicationCreate,
     CommunicationOut,
     CommunicationUpdate,
+    InterviewPrepOut,
 )
+from app.services import ai, interview_prep
 from app.services.user_state import decorate_jobs
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 communications_router = APIRouter(prefix="/api/communications", tags=["applications"])
 
-# Jobs for applications sent elsewhere, entered by hand rather than pasted.
 # Still waiting on the employer: the stages where following up makes sense.
 OPEN_STATUSES = frozenset(
     {ApplicationStatus.applied, ApplicationStatus.online_assessment, ApplicationStatus.interview}
@@ -313,6 +319,95 @@ def list_events(
             .order_by(ApplicationEvent.changed_at, ApplicationEvent.id)
         )
     )
+
+
+# --- Interview preparation --------------------------------------------------
+
+
+def _saved_prep(db, application_id: int) -> InterviewPrep | None:
+    return db.scalar(
+        select(InterviewPrep).where(InterviewPrep.application_id == application_id)
+    )
+
+
+@router.get("/{application_id}/interview-prep", response_model=InterviewPrepOut | None)
+def get_interview_prep(
+    application_id: int, user: CurrentUser, db: DbSession
+) -> InterviewPrep | None:
+    """The saved plan, or null. Costs nothing, so the page can always ask."""
+    return _saved_prep(db, _load(db, user, application_id).id)
+
+
+@router.post(
+    "/{application_id}/interview-prep",
+    response_model=InterviewPrepOut,
+    dependencies=[Depends(ai_rate_limit)],
+)
+def plan_interview(
+    application_id: int,
+    user: CurrentUser,
+    db: DbSession,
+    refresh: bool = Query(default=False),
+) -> InterviewPrep:
+    """Prepare for this interview: one AI request, saved for next time.
+
+    Offered only once the application reaches the interview stage, and the saved
+    plan is returned unless the user explicitly asks for a new one, so opening
+    the page never spends quota.
+    """
+    row = _load(db, user, application_id)
+    if row.status is not ApplicationStatus.interview:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Move this application to the Interview stage to prepare for it.",
+        )
+
+    existing = _saved_prep(db, row.id)
+    if existing is not None and not refresh:
+        return existing
+
+    require_description(row.job)
+    resume = require_active_resume(db, user)
+    match = db.scalar(
+        select(JobMatch).where(
+            JobMatch.user_id == user.id,
+            JobMatch.job_id == row.job_id,
+            JobMatch.resume_id == resume.id,
+        )
+    )
+
+    try:
+        roadmap = ai.interview_roadmap(
+            _resume_source_text(resume),
+            row.job.title,
+            row.job.company.name,
+            row.job.description or "",
+            _match_summary(match),
+        )
+    except ai.AIUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except ai.AIRateLimited as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except ai.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    content = interview_prep.normalise(roadmap)
+    if interview_prep.is_empty(content):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The AI did not return a usable plan. Please try again.",
+        )
+
+    prep = existing or InterviewPrep(application_id=row.id)
+    prep.content = content
+    prep.model_used = ai.last_model_used()
+    prep.generated_at = _now()
+    db.add(prep)
+    db.commit()
+    db.refresh(prep)
+    return prep
 
 
 # --- Communications ---------------------------------------------------------

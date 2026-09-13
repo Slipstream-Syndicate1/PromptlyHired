@@ -459,6 +459,33 @@ class RefreshToken(Base):
     )
 
 
+class InterviewPrep(Base):
+    """An AI-written preparation plan for one interview.
+
+    Generated when the user asks, once an application reaches the interview
+    stage, and kept afterwards: regenerating spends another free-tier request,
+    so the saved copy is what the page shows. One per application; deleting the
+    application removes it.
+    """
+
+    __tablename__ = "interview_preps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    model_used: Mapped[str | None] = mapped_column(String(60))
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    application: Mapped[Application] = relationship()
+
+
 class PasswordResetToken(Base):
     """A one-time password reset link.
 

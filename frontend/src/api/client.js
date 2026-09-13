@@ -196,6 +196,9 @@ export const api = {
   listResumes: () => request('/api/resumes'),
   uploadResume: (file) => upload('/api/resumes', file),
   reanalyzeResume: (id) => request(`/api/resumes/${id}/analyze`, { method: 'POST' }),
+  // Removes the file too, and everything derived from it. A CV is personal data,
+  // so the user has to be able to take it back.
+  deleteResume: (id) => request(`/api/resumes/${id}`, { method: 'DELETE' }),
   updateSkillProfile: (id, payload) =>
     request(`/api/resumes/${id}/skill-profile`, { method: 'PATCH', body: payload }),
   updateMasterResume: (id, master_content) =>
@@ -234,6 +237,13 @@ export const api = {
   deleteApplication: (id) => request(`/api/applications/${id}`, { method: 'DELETE' }),
   // Oldest first: every status change with its note.
   applicationEvents: (id) => request(`/api/applications/${id}/events`),
+
+  // Interview prep: the saved plan is free to read; making one costs an AI request.
+  interviewPrep: (id) => request(`/api/applications/${id}/interview-prep`),
+  planInterview: (id, refresh = false) =>
+    request(`/api/applications/${id}/interview-prep${refresh ? '?refresh=true' : ''}`, {
+      method: 'POST',
+    }),
 
   // Newest first. payload: { kind, direction, occurred_at, contact_name, subject, summary }
   // kind: email | call | meeting | message | other; direction: received | sent

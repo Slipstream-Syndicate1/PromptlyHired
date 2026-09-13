@@ -525,6 +525,40 @@ class CommunicationOut(BaseModel):
     created_at: datetime
 
 
+# --- Interview preparation -----------------------------------------------
+
+
+class PrepFocusOut(BaseModel):
+    topic: str = Field(default="", max_length=200)
+    why: str = Field(default="", max_length=1000)
+    actions: list[str] = Field(default_factory=list, max_length=8)
+
+
+class PrepQuestionOut(BaseModel):
+    question: str = Field(default="", max_length=500)
+    how_to_answer: str = Field(default="", max_length=1500)
+
+
+class InterviewPrepContent(BaseModel):
+    """The saved plan. Caps keep one odd model response from filling the page."""
+
+    summary: str = Field(default="", max_length=2000)
+    focus_areas: list[PrepFocusOut] = Field(default_factory=list, max_length=6)
+    likely_questions: list[PrepQuestionOut] = Field(default_factory=list, max_length=8)
+    questions_to_ask: list[str] = Field(default_factory=list, max_length=6)
+    watch_outs: list[str] = Field(default_factory=list, max_length=5)
+
+
+class InterviewPrepOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    application_id: int
+    content: InterviewPrepContent
+    model_used: str | None = None
+    generated_at: datetime
+
+
 # JobDetailOut refers to GeneratedDocumentOut and ApplicationOut, both defined
 # after it. Rebuilt once, here, where every name it needs exists.
 JobDetailOut.model_rebuild()
