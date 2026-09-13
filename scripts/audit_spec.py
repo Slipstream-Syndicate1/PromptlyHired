@@ -277,6 +277,18 @@ ck("master", "one editor for master and job copies",
    "ResumeEditor" in read("frontend/src/pages/DocumentEditor.jsx") and "ResumeEditor" in read("frontend/src/components/ResumePanel.jsx"))
 ck("master", "tests", (ROOT / "backend/tests/test_tailored_resume.py").exists())
 
+head("Interview preparation")
+apps_router = read("backend/app/routers/applications.py")
+prep_py = read("backend/app/services/interview_prep.py")
+ck("prep", "endpoint on the application", '"/{application_id}/interview-prep"' in apps_router)
+ck("prep", "only at the interview stage", "ApplicationStatus.interview" in apps_router)
+ck("prep", "saved plan reused unless refresh", "refresh" in apps_router and "existing" in apps_router)
+ck("prep", "no advert, no quota spent", "require_description" in apps_router)
+ck("prep", "model output clipped to the stored shape", "def normalise" in prep_py)
+ck("prep", "advert fenced as untrusted", "wrap_untrusted" in read("backend/app/services/ai.py"))
+ck("prep", "panel on the job page", "InterviewPrepPanel" in read("frontend/src/pages/JobDetail.jsx"))
+ck("prep", "tests", (ROOT / "backend/tests/test_interview_prep.py").exists())
+
 head("Security carried forward")
 sec = read("backend/app/security.py")
 auth = read("backend/app/routers/auth.py")

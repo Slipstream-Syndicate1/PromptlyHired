@@ -231,6 +231,13 @@ export const api = {
   // Oldest first: every status change with its note.
   applicationEvents: (id) => request(`/api/applications/${id}/events`),
 
+  // Interview prep: the saved plan is free to read; making one costs an AI request.
+  interviewPrep: (id) => request(`/api/applications/${id}/interview-prep`),
+  planInterview: (id, refresh = false) =>
+    request(`/api/applications/${id}/interview-prep${refresh ? '?refresh=true' : ''}`, {
+      method: 'POST',
+    }),
+
   // Newest first. payload: { kind, direction, occurred_at, contact_name, subject, summary }
   // kind: email | call | meeting | message | other; direction: received | sent
   listCommunications: (applicationId) =>

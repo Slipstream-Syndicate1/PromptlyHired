@@ -183,6 +183,10 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 - id, application_id (FK), from_status (null only for the event that created the application), to_status, changed_at, note
 - Application holds only the current status. This history is how employer responses (interview invitations, rejections, offers) are monitored over time. `note` says what caused the change, e.g. "Invited to interview by email".
 
+**InterviewPrep** (AI-written, one per Application, generated on request)
+- id, application_id (FK, unique), content (structured JSON), model_used, generated_at
+- Only for applications at the interview stage. Deleting the application deletes it.
+
 **Communication** (a logged exchange with the employer)
 - id, application_id (FK), kind (`email` | `call` | `meeting` | `message` | `other`), direction (`received` | `sent`), occurred_at, contact_name, subject, summary, created_at
 
@@ -309,7 +313,21 @@ The frontend calls these through `api.*` in `frontend/src/api/client.js`. Stage 
 - **Follow-up.** An application in an open stage (applied, online assessment, interview) needs following up once its `next_action_date` has passed, or, with none set, after 14 days without a status change. Closed stages never do.
 - **Response rate** excludes withdrawn applications, and is null rather than 0% when there is nothing to divide by.
 - **Privacy.** Another user's application or communication is a 404, never a 403, so its existence is not confirmed.
-- **No quota spent on hand-logged jobs.** They have no advert, so match analysis and document generation refuse (422) before calling the model.
+- **No quota spent on hand-logged jobs.** They have no advert, so match analysis, document generation and interview prep refuse (422) before calling the model.
+
+### Interview preparation
+
+Once an application reaches the **interview** stage, its job page offers an AI plan for that interview: what to prepare, the questions it is likely to ask with what a strong answer covers, questions to ask them, and the gaps to be ready to explain.
+
+- **Written once, then saved** (`interview_preps`, one row per application). Opening the page reads the saved plan and costs nothing; only "Plan my interview" and "Write it again" spend a request, and the second warns first. That keeps a feature built on a 20-request-a-day model from quietly draining it.
+- **Offered only at the interview stage** (422 otherwise), and refused for hand-logged jobs, which have no advert to work from.
+- Input is the advert (fenced as untrusted), the master resume or CV text, and the cached match analysis, so the plan names the user's real gaps.
+- The model never predicts the hiring decision, and `services/interview_prep.normalise` clips its answer to the stored limits rather than rejecting it, since the request is already spent.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/applications/{id}/interview-prep` | The saved plan, or null. No AI. |
+| POST | `/api/applications/{id}/interview-prep?refresh=` | Write it, or return the saved one unless `refresh=true`. |
 
 ---
 

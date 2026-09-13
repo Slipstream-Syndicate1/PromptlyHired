@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import ApplyLink from '../components/ApplyLink.jsx'
 import ApplicationPanel from '../components/ApplicationPanel.jsx'
+import InterviewPrepPanel from '../components/InterviewPrepPanel.jsx'
 import MatchPanel from '../components/MatchPanel.jsx'
 
 export default function JobDetail() {
@@ -112,6 +113,11 @@ export default function JobDetail() {
         application={detail.application}
         onChange={(application) => setDetail((d) => ({ ...d, application }))}
       />
+
+      {/* Only once there is an interview to prepare for. */}
+      {detail.application?.status === 'interview' && (
+        <InterviewPrepPanel application={detail.application} />
+      )}
 
       {job.description ? (
         <>
