@@ -5,11 +5,13 @@ import JobCard from './JobCard.jsx'
 import './RecommendedJobs.css'
 
 /**
- * "Recommended for you": the best few jobs for the skills in the active resume.
+ * "Recommended for you": jobs that fit the skills in the active resume.
  *
  * The list arrives ranked by the skills each job mentions, which costs nothing.
- * The top AI_SCORED of those are then AI-scored one at a time through the normal
- * match analysis, and only the SHOWN with the highest match % are displayed.
+ * The top AI_SCORED of those are AI-scored one at a time through the normal
+ * match analysis, and the SHOWN with the highest match % are displayed. "Show
+ * more" reveals the rest: the remaining scored jobs by match %, then the others
+ * in skill-fit order, which are not scored automatically.
  *
  * Each score is cached, so reopening costs nothing. The free AI tier allows
  * about 20 requests a day per model, so jobs that already have a score are
@@ -52,8 +54,8 @@ function basedOn(data) {
 
 export default function RecommendedJobs() {
   const [data, setData] = useState(null)
-  // The AI_SCORED candidates; only the SHOWN best are displayed.
-  const [candidates, setCandidates] = useState([])
+  const [items, setItems] = useState([])
+  const [showAll, setShowAll] = useState(false)
   const [error, setError] = useState('')
   const [scoring, setScoring] = useState(null)
   const [scoreNote, setScoreNote] = useState('')
@@ -73,18 +75,20 @@ export default function RecommendedJobs() {
       if (cancelled) return
 
       // Only jobs with an advert can be scored.
-      const top = result.jobs.filter((item) => item.job.description).slice(0, AI_SCORED)
+      const withAdverts = result.jobs.filter((item) => item.job.description)
       setData(result)
-      setCandidates(top)
+      setItems(withAdverts)
 
-      const toScore = top.filter((item) => item.job.match_percentage == null)
+      const toScore = withAdverts
+        .slice(0, AI_SCORED)
+        .filter((item) => item.job.match_percentage == null)
       for (const [index, item] of toScore.entries()) {
         if (cancelled) return
         setScoring({ done: index, total: toScore.length })
         try {
           const match = await api.analyzeMatch(item.job.id)
           if (cancelled) return
-          setCandidates((current) =>
+          setItems((current) =>
             current.map((entry) => (entry.job.id === item.job.id ? withMatch(entry, match) : entry)),
           )
         } catch (err) {
@@ -108,7 +112,7 @@ export default function RecommendedJobs() {
   const toggleSave = async (job) => {
     const next = !job.is_saved
     const mark = (value) =>
-      setCandidates((current) =>
+      setItems((current) =>
         current.map((entry) =>
           entry.job.id === job.id ? { ...entry, job: { ...entry.job, is_saved: value } } : entry,
         ),
@@ -148,7 +152,9 @@ export default function RecommendedJobs() {
     )
   }
 
-  const shown = bestFirst(candidates).slice(0, SHOWN)
+  const ranked = bestFirst(items)
+  const shown = showAll ? ranked : ranked.slice(0, SHOWN)
+  const checked = Math.min(items.length, AI_SCORED)
 
   return (
     <section className="rec" aria-labelledby="recommended-title">
@@ -161,20 +167,20 @@ export default function RecommendedJobs() {
       {error && <div className="alert error">{error}</div>}
       {scoring ? (
         <p className="fine-print" role="status">
-          Checking your top {candidates.length} matches with AI… {scoring.done} of {scoring.total}.
-          The order may change until every score is in.
+          Checking your top {checked} matches with AI… {scoring.done} of {scoring.total}. The
+          order may change until every score is in.
         </p>
       ) : (
-        candidates.length > SHOWN &&
+        checked > SHOWN &&
         !scoreNote && (
           <p className="fine-print">
-            Your {SHOWN} best matches out of the {candidates.length} jobs checked.
+            Your {SHOWN} best matches out of the {checked} jobs checked with AI.
           </p>
         )
       )}
       {scoreNote && <p className="fine-print">{scoreNote}</p>}
 
-      {candidates.length === 0 && !data.notice && (
+      {items.length === 0 && !data.notice && (
         <div className="empty">
           <p>
             No recommendations right now. Try adding job titles to your skill profile, or
@@ -199,6 +205,17 @@ export default function RecommendedJobs() {
           <JobCard job={item.job} onToggleSave={toggleSave} />
         </div>
       ))}
+
+      {ranked.length > SHOWN && (
+        <button
+          className="btn block"
+          type="button"
+          onClick={() => setShowAll((value) => !value)}
+          aria-expanded={showAll}
+        >
+          {showAll ? 'Show fewer' : `Show ${ranked.length - SHOWN} more`}
+        </button>
+      )}
     </section>
   )
 }
