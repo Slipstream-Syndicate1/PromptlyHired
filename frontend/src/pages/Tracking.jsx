@@ -15,7 +15,7 @@ import Modal from '../components/Modal.jsx'
 import QuickAddJob from '../components/QuickAddJob.jsx'
 import ApplyLink from '../components/ApplyLink.jsx'
 import { OPEN_STATUSES, statusLabel } from '../lib/applicationStatus.js'
-import { relativeDay } from '../lib/relativeTime.js'
+import { relativeDay, relativeDayCap } from '../lib/relativeTime.js'
 
 /**
  * Board columns, left to right. Every application status maps to exactly one
@@ -390,7 +390,7 @@ function UpcomingSidebar({ items }) {
                   <span className="tracking-upcoming-body">
                     <strong>{job.title}</strong>
                     <span className="tracking-upcoming-meta">
-                      {job.company.name} · {relativeDay(application.next_action_date)}
+                      {job.company.name} · {relativeDayCap(application.next_action_date)}
                       {overdue ? ' · Overdue' : ''}
                     </span>
                     {application.next_action && <small>{application.next_action}</small>}
@@ -714,7 +714,7 @@ export default function Tracking() {
               <span>Response rate</span>
             </div>
             <div>
-              <strong>{nextUp ? relativeDay(nextUp.application.next_action_date) : '—'}</strong>
+              <strong>{nextUp ? relativeDayCap(nextUp.application.next_action_date) : '—'}</strong>
               <span>
                 {nextUp
                   ? `${eventLabel(nextUp.application.next_action_type)} · ${nextUp.job.company.name}`
