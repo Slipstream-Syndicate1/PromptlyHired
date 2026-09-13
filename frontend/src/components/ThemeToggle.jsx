@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import './ThemeToggle.css'
 
 function getInitialTheme() {
   const saved = localStorage.getItem('jobtrail-theme')

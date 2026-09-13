@@ -1,0 +1,14 @@
+/* The theme toggle is fixed to the top-right corner, over the page. Keep every
+   page's title row clear of it, so counts ("3 shortlisted") and Back links are
+   never hidden underneath. Kept out of styles.css, which the UI branches rewrite. */
+
+.app .page .page-header {
+  padding-right: 96px;
+}
+
+/* On phones the toggle shrinks to a 38px icon. */
+@media (max-width: 640px) {
+  .app .page .page-header {
+    padding-right: 44px;
+  }
+}
