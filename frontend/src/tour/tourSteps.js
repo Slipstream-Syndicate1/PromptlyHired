@@ -32,19 +32,24 @@ export const onboardingSteps = [
     placement: 'bottom',
   },
   {
-    target: '.dashboard-grid',
+    // The first card, not the whole grid: on a phone the grid is taller than the
+    // screen, so a card placed beside it has nowhere to go and ends up off it.
+    target: '.dashboard-grid > :first-child',
     route: '/',
     title: 'Everything else, one click away',
     content:
-      'Jump straight to your resume, your saved jobs, or the history of documents you have generated.',
+      'These cards jump straight to your jobs, your saved jobs, the history of documents you have generated, and your profile.',
     placement: 'top',
   },
   {
-    target: '.nav',
+    // One nav item, not the whole nav: on desktop the nav is a full-height rail,
+    // so a card placed above or below it lands off the screen, and the tour
+    // could not be continued from there.
+    target: '.nav a[href="/jobs"]',
     route: '/',
     title: 'Get around anytime',
     content:
-      'This bar follows you everywhere — Jobs, Saved, History and Profile are always one tap away.',
+      'This follows you everywhere — Jobs, Saved, History and Profile are always one tap away.',
     placement: 'top',
   },
   {
@@ -52,6 +57,8 @@ export const onboardingSteps = [
     route: '/',
     title: 'Light or dark, your call',
     content: 'Switch themes any time. Your choice is remembered on this device.',
-    placement: 'left',
+    // 'bottom': the toggle sits in the top corner, and on a phone there is not
+    // room for the card beside it.
+    placement: 'bottom',
   },
 ]
