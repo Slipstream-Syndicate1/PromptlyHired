@@ -129,9 +129,12 @@ export default function Dashboard() {
                 className="dashboard-stats dashboard-pipeline"
                 aria-label="Application pipeline"
               >
+                {/* Each application is counted once, in the stage it is in now.
+                    "Applied" read as a running total and contradicted the Jobs
+                    Applied card above, which counts every application. */}
                 <div>
                   <strong>{stats.by_status.applied ?? 0}</strong>
-                  <span>Applied</span>
+                  <span>Awaiting reply</span>
                 </div>
                 <div>
                   <strong>
