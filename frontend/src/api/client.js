@@ -196,10 +196,15 @@ export const api = {
     request(`/api/resumes/${id}/skill-profile`, { method: 'PATCH', body: payload }),
   updateMasterResume: (id, master_content) =>
     request(`/api/resumes/${id}/master`, { method: 'PUT', body: { master_content } }),
+  // Reads the uploaded CV into the master layout. Returns a draft; saves nothing.
+  draftMasterFromUpload: (id) => request(`/api/resumes/${id}/master/draft`, { method: 'POST' }),
 
   // --- Documents + history ---
   generateDocument: (jobId, payload) =>
     request(`/api/jobs/${jobId}/documents`, { method: 'POST', body: payload }),
+  // An exact copy of the master resume for one job. No AI.
+  copyMasterResume: (jobId) =>
+    request(`/api/jobs/${jobId}/documents/from-master`, { method: 'POST' }),
   getDocument: (id) => request(`/api/documents/${id}`),
   updateDocument: (id, edited_content) =>
     request(`/api/documents/${id}`, { method: 'PATCH', body: { edited_content } }),

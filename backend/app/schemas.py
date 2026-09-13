@@ -328,6 +328,8 @@ class GeneratedDocumentOut(BaseModel):
     kind: DocumentKind
     content: dict
     edited_content: dict | None = None
+    # "master-copy" for a straight copy of the master resume, otherwise the AI model.
+    model_used: str | None = None
     created_at: datetime
     updated_at: datetime
 

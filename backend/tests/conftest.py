@@ -184,6 +184,7 @@ def ai_stub(monkeypatch):
 
     def gen_resume(resume_text, title, company, description, summary="", instructions=None):
         calls["resume"] += 1
+        calls["instructions"] = instructions
         return _FakeDoc({
             "full_name": "Alex Morgan",
             "headline": f"Backend Engineer for {company}",
@@ -202,6 +203,34 @@ def ai_stub(monkeypatch):
             "instructions_seen": instructions,
         })
 
+    def tailor(master_text, title, company, description, summary="", instructions=None):
+        calls["tailor"] = calls.get("tailor", 0) + 1
+        calls["master_text"] = master_text
+        calls["instructions"] = instructions
+        # A test sets calls["tailoring"] to choose the edits; by default nothing changes.
+        return calls.get("tailoring") or {"headline": "", "summary": "", "sections": [], "skills": []}
+
+    def structure(text):
+        calls["structure"] = calls.get("structure", 0) + 1
+        return _FakeDoc({
+            "full_name": "Alex Morgan",
+            "headline": "",
+            "contact_line": "780-555-0100 | alex@example.com |  | ",
+            "summary": "",
+            "sections": [{
+                "heading": "Experience",
+                "bullets": [],
+                "entries": [{
+                    "title": "Backend Engineer", "meta": "", "right": "2019 - Present",
+                    "subtitle": "Acme Ltd", "subtitle_right": "London, UK",
+                    "bullets": ["Built services"],
+                }],
+            }],
+            "skills": ["Languages: Python"],
+        })
+
+    monkeypatch.setattr(ai, "tailor_master_resume", tailor)
+    monkeypatch.setattr(ai, "structure_resume", structure)
     monkeypatch.setattr(ai, "extract_skill_profile", extract)
     monkeypatch.setattr(ai, "analyze_match", match)
     monkeypatch.setattr(ai, "generate_resume", gen_resume)

@@ -151,6 +151,20 @@ export default function JobModal({ job, onClose, onToggleSave, onJobUpdate }) {
     }
   }
 
+  // An exact copy of the master resume to edit for this job. No AI, so it is instant.
+  const startFromMaster = async () => {
+    setGenerating('master')
+    setError('')
+    try {
+      const doc = await api.copyMasterResume(job.id)
+      onJobUpdateRef.current?.({ has_documents: true })
+      navigate(`/documents/${doc.id}`)
+    } catch (err) {
+      setError(err.message)
+      setGenerating(null)
+    }
+  }
+
   const current = detail?.job ?? job
   const hasAdvert = Boolean(current.description)
   const needsResume = /resume/i.test(matchError)
@@ -225,7 +239,7 @@ export default function JobModal({ job, onClose, onToggleSave, onJobUpdate }) {
                   disabled={Boolean(generating)}
                   onClick={() => generate('resume')}
                 >
-                  {generating === 'resume' ? 'Writing resume…' : 'Create resume'}
+                  {generating === 'resume' ? 'Tailoring resume…' : 'Tailor resume with AI'}
                 </button>
                 <button
                   type="button"
@@ -237,8 +251,16 @@ export default function JobModal({ job, onClose, onToggleSave, onJobUpdate }) {
                 </button>
               </>
             )}
+            <button
+              type="button"
+              className="btn"
+              disabled={Boolean(generating)}
+              onClick={startFromMaster}
+            >
+              {generating === 'master' ? 'Copying…' : 'Start from master resume'}
+            </button>
           </div>
-          {generating && (
+          {generating && generating !== 'master' && (
             <p className="fine-print" role="status">
               Tailoring it to this job. This can take up to a minute.
             </p>

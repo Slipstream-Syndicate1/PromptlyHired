@@ -51,7 +51,8 @@ def test_generation_passes_user_steering_through(client, with_resume, ai_stub):
         headers=headers,
         json={"kind": "resume", "instructions": "emphasise my backend work"},
     ).json()
-    assert doc["content"]["instructions_seen"] == "emphasise my backend work"
+    assert doc["kind"] == "resume"
+    assert ai_stub["instructions"] == "emphasise my backend work"
 
 
 def test_generation_uses_the_match_when_one_exists(client, with_resume, ai_stub):

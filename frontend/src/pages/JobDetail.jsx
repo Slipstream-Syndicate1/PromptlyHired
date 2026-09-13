@@ -51,6 +51,19 @@ export default function JobDetail() {
     }
   }
 
+  // An exact copy of the master resume to edit for this job. No AI.
+  const startFromMaster = async () => {
+    setGenerating('master')
+    setError('')
+    try {
+      const doc = await api.copyMasterResume(jobId)
+      navigate(`/documents/${doc.id}`)
+    } catch (err) {
+      setError(err.message)
+      setGenerating(null)
+    }
+  }
+
   if (error && !detail) {
     return (
       <main className="page">
@@ -112,8 +125,10 @@ export default function JobDetail() {
           <h2 className="section-title">Tailored documents</h2>
           <div className="card">
             <p className="job-company" style={{ marginBottom: 12 }}>
-              Generated from your resume and this advert. You review and edit before
-              exporting — nothing is sent anywhere on your behalf.
+              Tailor your master resume to this advert with AI, or start from an exact copy
+              of your master resume and edit it yourself. Either way you review and edit
+              before exporting — nothing is sent anywhere on your behalf, and your master
+              resume is never changed.
             </p>
             <div className="job-actions" style={{ marginTop: 0 }}>
               <button
@@ -121,7 +136,14 @@ export default function JobDetail() {
                 disabled={Boolean(generating)}
                 onClick={() => generate('resume')}
               >
-                {generating === 'resume' ? 'Writing…' : 'Generate resume'}
+                {generating === 'resume' ? 'Tailoring…' : 'Tailor resume with AI'}
+              </button>
+              <button
+                className="btn"
+                disabled={Boolean(generating)}
+                onClick={startFromMaster}
+              >
+                {generating === 'master' ? 'Copying…' : 'Start from master resume'}
               </button>
               <button
                 className="btn primary"
