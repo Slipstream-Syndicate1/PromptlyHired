@@ -68,10 +68,25 @@ head("Removed tracker domain stays removed")
 # The rest of the old tracker domain stays gone.
 for gone in ["class Follow(", "NotifiedJob", "PushSubscription", "JobPreferences"]:
     ck("removed", f"no {gone.rstrip('(')}", gone not in models)
-for path in ["backend/app/services/notifications.py", "backend/app/services/push.py",
-             "backend/app/services/reminders.py", "backend/app/services/analytics.py",
-             "frontend/src/pages/Applications.jsx", "frontend/src/pages/Analytics.jsx"]:
+for path in ["backend/app/services/push.py", "backend/app/services/reminders.py",
+             "backend/app/services/analytics.py", "frontend/src/pages/Applications.jsx",
+             "frontend/src/pages/Analytics.jsx"]:
     ck("removed", f"{path} deleted", not (ROOT / path).exists())
+
+# Reminder emails came back with application tracking, so the file is allowed
+# again - but only as reminders about the user's own tracked applications.
+notifications = read_if("backend/app/services/notifications.py")
+if notifications:
+    head("Follow-up reminders")
+    ck("reminders", "about tracked applications, not a job digest",
+       "Application" in notifications and "Follow" not in notifications)
+    ck("reminders", "driven by the application's own next action date",
+       "next_action_date" in notifications)
+    ck("reminders", "opt-in per user", "preferences" in notifications)
+    ck("reminders", "sent through the shared email service", "email" in notifications)
+    ck("reminders", "sent by a task, never during a web request",
+       "reminders" in read("backend/app/tasks.py")
+       and "notifications" not in read("backend/app/routers/applications.py"))
 
 head("Application tracking")
 TRACKING_FIELDS = {
