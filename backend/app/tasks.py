@@ -14,13 +14,19 @@ import sys
 def main() -> int:
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     command = args[0] if args else "doctor"
-    if command != "doctor":
-        print(f"Unknown task: {command}. Expected: doctor", file=sys.stderr)
-        return 2
+    if command == "doctor":
+        from app import doctor
 
-    from app import doctor
+        return doctor.run()
+    if command == "reminders":
+        from app.services.notifications import send_upcoming_reminders
 
-    return doctor.run()
+        count = send_upcoming_reminders()
+        print(f"Sent {count} reminder email(s).")
+        return 0
+
+    print(f"Unknown task: {command}. Expected: doctor or reminders", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

@@ -31,9 +31,9 @@ const ACTIONS = [
   },
   {
     to: "/history",
-    title: "Application Tracker",
+    title: "Application History",
     description:
-      "Track your applications and see how many you've sent, received responses for, and more.",
+      "View all the jobs you applied to and the documents you submitted in the past.",
     icon: "history",
     cta: "View history",
   },
@@ -59,20 +59,20 @@ function ActionIcon({ name }) {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [jobs, setJobs] = useState([]);
+  const [historyJobs, setHistoryJobs] = useState([]);
   const [savedJobs, setSavedJobs] = useState([]);
   const [resume, setResume] = useState(null);
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
-<<<<<<< HEAD
-    Promise.all([api.listJobs(), api.listSaved(), api.getActiveResume()])
-      .then(([jobList, savedJobList, activeResume]) => {
-=======
-    Promise.all([api.listJobs(), api.getActiveResume(), api.applicationStats()])
-      .then(([jobList, activeResume, applicationStats]) => {
->>>>>>> main
-        setJobs(jobList);
+    Promise.all([
+      api.history(),
+      api.listSaved(),
+      api.getActiveResume(),
+      api.applicationStats(),
+    ])
+      .then(([historyList, savedJobList, activeResume, applicationStats]) => {
+        setHistoryJobs(historyList);
         setSavedJobs(savedJobList);
         setResume(activeResume);
         setStats(applicationStats);
@@ -82,6 +82,7 @@ export default function Dashboard() {
 
   const firstName = user?.name?.trim()?.split(/\s+/)[0];
   const savedCount = savedJobs.length;
+  const jobsAppliedCount = historyJobs.length;
 
   return (
     <main className="page dashboard-page">
@@ -100,7 +101,7 @@ export default function Dashboard() {
         <div className="dashboard-left">
           <section className="dashboard-stats" aria-label="Job search overview">
             <div>
-              <strong>{jobs.length}</strong>
+              <strong>{jobsAppliedCount}</strong>
               <span>Jobs Applied</span>
             </div>
             <div>
@@ -117,7 +118,7 @@ export default function Dashboard() {
             <>
               <div className="dashboard-section-head">
                 <div>
-                  <h2>Application pipeline</h2>
+                  <h2>Application Pipeline</h2>
                   <p>Where your tracked applications stand right now.</p>
                 </div>
                 <Link className="btn" to="/tracking">

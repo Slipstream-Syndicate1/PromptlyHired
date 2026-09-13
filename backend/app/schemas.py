@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -114,7 +115,66 @@ class UserOut(BaseModel):
     profile_picture_url: str | None = None
     preferred_location: str | None = None
     include_remote: bool = True
+    notification_preferences: dict = Field(
+        default_factory=lambda: {
+            "email_enabled": False,
+            "categories": [],
+            "reminder_offsets_hours": [24],
+        }
+    )
     created_at: datetime
+
+
+NotificationCategory = Literal[
+    "interview_coming_up",
+    "offer_deadline_coming_up",
+    "application_deadline_coming_up",
+    "coffee_chat_event_coming_up",
+    "networking_event_coming_up",
+]
+
+
+class NotificationPreferences(BaseModel):
+    email_enabled: bool = False
+    categories: list[NotificationCategory] = Field(default_factory=list)
+    reminder_offsets_hours: list[int] = Field(default_factory=lambda: [24])
+
+    @field_validator("categories")
+    @classmethod
+    def _clean_categories(cls, v: list[NotificationCategory]) -> list[NotificationCategory]:
+        allowed = {
+            "interview_coming_up",
+            "offer_deadline_coming_up",
+            "application_deadline_coming_up",
+            "coffee_chat_event_coming_up",
+            "networking_event_coming_up",
+        }
+        seen: set[NotificationCategory] = set()
+        out: list[NotificationCategory] = []
+        for value in v or []:
+            cleaned = str(value).strip()
+            if cleaned not in allowed:
+                raise ValueError(f"Unsupported notification category: {cleaned}")
+            if cleaned not in seen:
+                seen.add(cleaned)
+                out.append(cleaned)
+        return out
+
+    @field_validator("reminder_offsets_hours")
+    @classmethod
+    def _clean_offsets(cls, v: list[int]) -> list[int]:
+        values: list[int] = []
+        seen: set[int] = set()
+        for raw in v or []:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if value <= 0 or value in seen:
+                continue
+            seen.add(value)
+            values.append(value)
+        return sorted(values)
 
 
 class UserUpdate(BaseModel):
@@ -123,6 +183,7 @@ class UserUpdate(BaseModel):
     # Blank or null clears it, so recommendations use the resume location again.
     preferred_location: str | None = Field(default=None, max_length=120)
     include_remote: bool | None = None
+    notification_preferences: NotificationPreferences | None = None
 
     @field_validator("name", "profile_picture_url", "preferred_location")
     @classmethod
