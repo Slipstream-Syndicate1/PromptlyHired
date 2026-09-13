@@ -194,6 +194,8 @@ export const api = {
   reanalyzeResume: (id) => request(`/api/resumes/${id}/analyze`, { method: 'POST' }),
   updateSkillProfile: (id, payload) =>
     request(`/api/resumes/${id}/skill-profile`, { method: 'PATCH', body: payload }),
+  updateMasterResume: (id, master_content) =>
+    request(`/api/resumes/${id}/master`, { method: 'PUT', body: { master_content } }),
 
   // --- Documents + history ---
   generateDocument: (jobId, payload) =>
