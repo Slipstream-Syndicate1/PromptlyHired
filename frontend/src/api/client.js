@@ -176,6 +176,10 @@ export const api = {
   // { job, matched_skills, relevance }; no AI call happens here.
   recommendedJobs: () => request('/api/jobs/recommended'),
   addJobFromUrl: (url) => request('/api/jobs/from-url', { method: 'POST', body: { url } }),
+  // Title + company (+ optional url), no description - for the tracking board.
+  addJobManual: (payload) => request('/api/jobs/manual', { method: 'POST', body: payload }),
+  // { title, company, url } - only while you're the only user who added it.
+  editJob: (id, payload) => request(`/api/jobs/${id}`, { method: 'PATCH', body: payload }),
   addJobFromText: (payload) =>
     request('/api/jobs/from-text', { method: 'POST', body: payload }),
   getJob: (id) => request(`/api/jobs/${id}`),

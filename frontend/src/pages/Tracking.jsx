@@ -1,0 +1,823 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
+import { api } from '../api/client'
+import Modal from '../components/Modal.jsx'
+import QuickAddJob from '../components/QuickAddJob.jsx'
+import ApplyLink from '../components/ApplyLink.jsx'
+import { OPEN_STATUSES, statusLabel } from '../lib/applicationStatus.js'
+import { relativeDay, relativeDayCap } from '../lib/relativeTime.js'
+
+/**
+ * Board columns, left to right. Every application status maps to exactly one
+ * column; a column that holds two statuses has a default (what a drop sets)
+ * and the other is reached from the card menu, with a chip saying which it is.
+ *
+ * Wishlist isn't a status: it's the Saved feature, shown as the "not applied
+ * yet" bucket so there is one "interested in this job" mechanism, not two.
+ */
+const COLUMNS = [
+  { key: 'wishlist', label: 'Wishlist', hint: 'Not applied yet', statuses: [] },
+  { key: 'applied', label: 'Applied', hint: 'Waiting to hear back', statuses: ['applied'] },
+  { key: 'interview', label: 'Interview', hint: 'In the process', statuses: ['interview', 'online_assessment'] },
+  { key: 'offer', label: 'Offer', hint: 'Decision time', statuses: ['offer'] },
+  { key: 'closed', label: 'Closed', hint: 'Rejected or withdrawn', statuses: ['rejected', 'withdrawn'] },
+]
+
+const columnFor = (status) => COLUMNS.find((c) => c.statuses.includes(status))?.key ?? 'closed'
+
+/**
+ * One board item per job. `application` is null for Wishlist entries - those
+ * are saved jobs with no application row yet, and only gain one (and a
+ * status, history, events) when dragged into a pipeline column.
+ */
+function toItems(applications, jobs) {
+  const applied = new Set(applications.map((a) => a.job.id))
+  const wishlist = jobs
+    .filter((job) => job.is_saved && !applied.has(job.id))
+    .map((job) => ({ id: `job-${job.id}`, job, application: null }))
+  const tracked = applications.map((a) => ({ id: `app-${a.id}`, job: a.job, application: a }))
+  return [...wishlist, ...tracked]
+}
+
+// Sorts the whole board at once, then each column is a filtered slice - so
+// ordering stays consistent whichever column an item is in. Wishlist items
+// have no application dates, so those fall back to 0 (epoch) rather than
+// producing an unstable NaN comparison.
+const SORTS = {
+  recent: {
+    label: 'Recently moved',
+    compare: (a, b) =>
+      new Date(b.application?.status_updated_at || 0) - new Date(a.application?.status_updated_at || 0),
+  },
+  applied_desc: {
+    label: 'Applied (newest first)',
+    compare: (a, b) => new Date(b.application?.applied_date || 0) - new Date(a.application?.applied_date || 0),
+  },
+  applied_asc: {
+    label: 'Applied (oldest first)',
+    compare: (a, b) => new Date(a.application?.applied_date || 0) - new Date(b.application?.applied_date || 0),
+  },
+  company: {
+    label: 'Company (A–Z)',
+    compare: (a, b) => a.job.company.name.localeCompare(b.job.company.name),
+  },
+  title: {
+    label: 'Job title (A–Z)',
+    compare: (a, b) => a.job.title.localeCompare(b.job.title),
+  },
+}
+
+// What an application's next event *is* follows from its stage: nobody in
+// the Interview column is scheduling anything but an interview. So the event
+// is just a date and a note, and the stage supplies the label - it moves
+// with the card. Closed applications have nothing next, so no event.
+const EVENT_LABELS = {
+  applied: 'Follow-up',
+  online_assessment: 'Assessment',
+  interview: 'Interview',
+  offer: 'Deadline',
+}
+
+const eventLabel = (application) => EVENT_LABELS[application.status] || 'Event'
+const canHaveEvent = (application) => Boolean(application && EVENT_LABELS[application.status])
+
+// next_action_date is a plain date; treat it as that day's noon so sorting
+// lines up with the calendar date, not a UTC midnight.
+const eventTime = (application) => new Date(`${application.next_action_date}T12:00:00`)
+const localToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+// A date-only event is overdue from the *next* day: something due today is
+// still due, not missed. ISO dates compare correctly as strings.
+const isOverdue = (application) => application.next_action_date < localToday()
+
+function EventEditor({ application, onSave, onCancel }) {
+  const [date, setDate] = useState(application.next_action_date || '')
+  const [note, setNote] = useState(application.next_action || '')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!date) return
+    setBusy(true)
+    await onSave({ next_action_date: date, next_action: note || null })
+    setBusy(false)
+  }
+
+  return (
+    <form className="tracking-form" onSubmit={submit}>
+      <label className="field">
+        <span>Date</span>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <label className="field">
+        <span>Note (optional)</span>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={255}
+          placeholder="e.g. Final round with hiring manager"
+        />
+      </label>
+      <div className="job-actions" style={{ marginTop: 0 }}>
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+        {application.next_action_date && (
+          <button
+            className="btn"
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              await onSave({ next_action_date: null, next_action: null })
+            }}
+          >
+            Clear
+          </button>
+        )}
+        <button className="btn link" type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function DetailsEditor({ item, onSave, onCancel }) {
+  const { job, application } = item
+  const [title, setTitle] = useState(job.title)
+  const [company, setCompany] = useState(job.company.name)
+  const [url, setUrl] = useState(job.url || '')
+  const [appliedDate, setAppliedDate] = useState(application?.applied_date || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (event) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await onSave(
+        { title: title.trim(), company: company.trim(), url: url.trim() },
+        application && appliedDate !== application.applied_date ? { applied_date: appliedDate } : null,
+      )
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="tracking-form" onSubmit={submit}>
+      {error && <div className="alert error">{error}</div>}
+      <label className="field">
+        <span>Job title</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} required />
+      </label>
+      <label className="field">
+        <span>Company</span>
+        <input value={company} onChange={(e) => setCompany(e.target.value)} maxLength={200} required />
+      </label>
+      <label className="field">
+        <span>Link (optional)</span>
+        <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+      </label>
+      {application && (
+        <label className="field">
+          <span>Applied on</span>
+          <input type="date" value={appliedDate} onChange={(e) => setAppliedDate(e.target.value)} required />
+        </label>
+      )}
+      <div className="job-actions" style={{ marginTop: 0 }}>
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+        <button className="btn link" type="button" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function TrackingCard({ item, column, onOpen, onRemove, onSetStatus, onMove }) {
+  const { job, application } = item
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id })
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [menuOpen])
+
+  // A column that holds two statuses (Interview: interview / online
+  // assessment; Closed: rejected / withdrawn) shows both on the card as a
+  // segmented control - a two-way choice shouldn't be buried in a menu.
+  const shared = application && column.statuses.length > 1
+  const overdue = application?.next_action_date && isOverdue(application)
+  // The one time-based chip worth showing: silence that needs acting on.
+  // "Moved 2 minutes ago" said nothing the sort order didn't already.
+  const quiet = application?.needs_follow_up && !application.next_action_date
+
+  return (
+    <article
+      ref={setNodeRef}
+      className={`card tracking-card${isDragging ? ' dragging' : ''}`}
+      style={{ transform: CSS.Translate.toString(transform) }}
+      {...listeners}
+      {...attributes}
+      role="group"
+      aria-roledescription="draggable card"
+    >
+      <h3 className="job-title">
+        <Link to={`/jobs/${job.id}`}>{job.title}</Link>
+      </h3>
+      <p className="job-company">
+        {job.company.name}
+        {job.location ? ` · ${job.location}` : ''}
+      </p>
+
+      {shared && (
+        <div className="tracking-substage" role="radiogroup" aria-label="Stage">
+          {column.statuses.map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={application.status === value}
+              className={application.status === value ? 'on' : ''}
+              onClick={() => application.status !== value && onSetStatus(item, value)}
+            >
+              {statusLabel(value)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="job-meta">
+        {application?.applied_date && (
+          <span className="chip" title={`Applied ${application.applied_date}`}>
+            Applied {relativeDay(application.applied_date)}
+          </span>
+        )}
+        {quiet && (
+          <span className="chip quiet">
+            No reply in {application.days_since_update} day{application.days_since_update === 1 ? '' : 's'}
+          </span>
+        )}
+        {job.match_percentage != null && <span className="chip">{job.match_percentage}% match</span>}
+        {job.has_documents && <span className="chip analysed">Documents</span>}
+        {canHaveEvent(application) && application.next_action_date && (
+          <button
+            className={`chip event${overdue ? ' overdue' : ''}`}
+            onClick={() => onOpen('event', item)}
+            title={`${eventLabel(application)} · ${application.next_action_date}`}
+          >
+            <i className="legend-dot" aria-hidden="true" />
+            {eventLabel(application)} {relativeDay(application.next_action_date)}
+            {application.next_action ? ` · ${application.next_action}` : ''}
+          </button>
+        )}
+      </div>
+
+      <div className="tracking-card-actions">
+        <ApplyLink job={job} variant="view" />
+        {/* Always the same icon in the same place, whatever's inside it -
+            rather than icons popping in or out depending on card state.
+            Moving between columns is drag-only; what lives here is what
+            drag can't express. */}
+        <div className="tracking-card-menu" ref={menuRef}>
+          <button
+            className="icon-btn"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="More actions"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            title="More actions"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="tracking-card-menu-list" role="menu">
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onOpen('edit', item)
+                }}
+              >
+                Edit
+              </button>
+              {canHaveEvent(application) && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onOpen('event', item)
+                  }}
+                >
+                  {application.next_action_date ? `Edit ${eventLabel(application).toLowerCase()}` : `Add ${eventLabel(application).toLowerCase()}`}
+                </button>
+              )}
+              {/* The non-drag route between columns, for keyboards, screen
+                  readers and anyone who'd rather not drag. */}
+              <div className="tracking-card-menu-group" role="group" aria-label="Move to">
+                <span>Move to</span>
+                {COLUMNS.filter((c) => c.key !== column.key).map((c) => (
+                  <button
+                    key={c.key}
+                    role="menuitem"
+                    className={`stage-${c.key}`}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onMove(item, c)
+                    }}
+                  >
+                    <i className="legend-dot" aria-hidden="true" />
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onRemove(item)
+                }}
+              >
+                Remove from board
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function UpcomingSidebar({ items }) {
+  const upcoming = items
+    .filter((item) => canHaveEvent(item.application) && item.application.next_action_date)
+    .sort((a, b) => eventTime(a.application) - eventTime(b.application))
+
+  return (
+    <aside className="card tracking-upcoming">
+      <div className="section-heading-row">
+        <div>
+          <span className="calendar-kicker">Stay on track</span>
+          <h2>Coming up</h2>
+        </div>
+        <span>{upcoming.length}</span>
+      </div>
+
+      {upcoming.length === 0 ? (
+        <p className="calendar-empty">
+          Nothing coming up. Add an interview or deadline from any application&rsquo;s menu.
+        </p>
+      ) : (
+        <ul className="tracking-upcoming-list">
+          {upcoming.map(({ id, job, application }) => {
+            const overdue = isOverdue(application)
+            return (
+              <li key={id} className={`tracking-upcoming-item stage-${columnFor(application.status)}${overdue ? ' overdue' : ''}`}>
+                <Link to={`/jobs/${job.id}`} title={application.next_action_date}>
+                  <i className="legend-dot" aria-hidden="true" />
+                  <span className="tracking-upcoming-body">
+                    <strong>{job.title}</strong>
+                    <span className="tracking-upcoming-meta">
+                      {job.company.name} · {relativeDayCap(application.next_action_date)}
+                      {overdue ? ' · Overdue' : ''}
+                    </span>
+                    {application.next_action && <small>{application.next_action}</small>}
+                  </span>
+                  <span className="tracking-upcoming-type">{eventLabel(application)}</span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </aside>
+  )
+}
+
+function Column({ column, items, sectionRef, onOpen, onRemove, onSetStatus, onMove }) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.key })
+
+  return (
+    <section
+      ref={sectionRef}
+      className={`tracking-column stage-${column.key}${isOver ? ' over' : ''}`}
+    >
+      <div className="tracking-column-head">
+        <div>
+          <h2>{column.label}</h2>
+          <p>{column.hint}</p>
+        </div>
+        <span className="tracking-count">{items.length}</span>
+      </div>
+      <div className="tracking-add-job-row">
+        <button
+          type="button"
+          className="btn tracking-add-job"
+          onClick={() => onOpen('add', null, column)}
+          aria-label={`Add a job to ${column.label}`}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" />
+          </svg>
+          <span>Add a job</span>
+        </button>
+      </div>
+      <div className="tracking-column-body" ref={setNodeRef}>
+        {items.length === 0 && <p className="tracking-empty-hint">Nothing here yet</p>}
+        {items.map((item) => (
+          <TrackingCard
+            key={item.id}
+            item={item}
+            column={column}
+            onOpen={onOpen}
+            onRemove={onRemove}
+            onSetStatus={onSetStatus}
+            onMove={onMove}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * On narrow screens the board scrolls sideways one column at a time, with
+ * nothing saying there are more. These tabs are the map: tap to jump, and
+ * the active one follows the scroll position. Hidden by CSS on wide screens.
+ */
+function ColumnTabs({ counts, active, onSelect }) {
+  const activeRef = useRef(null)
+
+  // The strip itself scrolls on a narrow screen: keep the active tab in view
+  // as the board is swiped, so the map never points off-screen.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [active])
+
+  return (
+    <div className="tracking-column-tabs" role="tablist" aria-label="Board columns">
+      {COLUMNS.map((column) => (
+        <button
+          key={column.key}
+          ref={active === column.key ? activeRef : null}
+          type="button"
+          role="tab"
+          aria-selected={active === column.key}
+          className={`stage-${column.key}${active === column.key ? ' on' : ''}`}
+          onClick={() => onSelect(column.key)}
+        >
+          {column.label}
+          <span>{counts[column.key]}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * A kanban board over /api/applications: Wishlist (saved, no application
+ * yet), then the pipeline. Nothing here is inferred - the app does not apply
+ * on the user's behalf, so a job only gets an application row when the user
+ * drags it into a column, and only moves when they drag it again.
+ */
+export default function Tracking() {
+  const [applications, setApplications] = useState([])
+  const [jobs, setJobs] = useState([])
+  const [busy, setBusy] = useState(true)
+  const [error, setError] = useState('')
+  const [sortKey, setSortKey] = useState('recent')
+  // What's open in the modal: { kind: 'add' | 'edit' | 'event', item, column }.
+  const [modal, setModal] = useState(null)
+  const [activeColumn, setActiveColumn] = useState(COLUMNS[0].key)
+  const columnsRef = useRef(null)
+  const columnRefs = useRef({})
+  // The whole card is the drag handle. A 5px threshold keeps clicks on the
+  // title, buttons and menu working as clicks; on touch, a short hold starts
+  // a drag so an ordinary swipe still scrolls the board.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
+
+  const items = useMemo(
+    () => toItems(applications, jobs).sort(SORTS[sortKey].compare),
+    [applications, jobs, sortKey],
+  )
+  const itemsIn = (column) =>
+    items.filter((item) =>
+      column.key === 'wishlist' ? !item.application : column.statuses.includes(item.application?.status),
+    )
+
+  useEffect(() => {
+    Promise.all([api.listApplications(), api.listJobs()])
+      .then(([apps, jobList]) => {
+        setApplications(apps)
+        setJobs(jobList)
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setBusy(false))
+  }, [])
+
+  // Keep the mobile column tabs in step with whichever column is scrolled
+  // into view. On wide screens nothing scrolls, so this never fires.
+  useEffect(() => {
+    const el = columnsRef.current
+    if (!el) return
+    const onScroll = () => {
+      let nearest = COLUMNS[0].key
+      let best = Infinity
+      for (const [key, node] of Object.entries(columnRefs.current)) {
+        if (!node) continue
+        const distance = Math.abs(node.offsetLeft - el.scrollLeft)
+        if (distance < best) {
+          best = distance
+          nearest = key
+        }
+      }
+      setActiveColumn(nearest)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [busy])
+
+  const scrollToColumn = (key) => {
+    setActiveColumn(key)
+    columnRefs.current[key]?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+  }
+
+  const openModal = (kind, item = null, column = null) => setModal({ kind, item, column })
+  const closeModal = () => setModal(null)
+
+  const replaceApplication = (updated) =>
+    setApplications((current) => current.map((a) => (a.id === updated.id ? updated : a)))
+
+  // Every write is optimistic with a full rollback of both lists on failure -
+  // simpler than undoing individual moves, and a failed write is rare.
+  const withRollback = async (mutate) => {
+    const before = { applications, jobs }
+    try {
+      await mutate()
+    } catch (err) {
+      setApplications(before.applications)
+      setJobs(before.jobs)
+      setError(err.message)
+    }
+  }
+
+  // Moving to another column clears the next event: it was about the stage
+  // the card is leaving (an assessment date means nothing at Offer), and the
+  // label comes from the stage, so carrying it over would re-describe it.
+  // Switching sub-stage within a column (interview <-> online assessment)
+  // keeps it - that's a correction, not a move, and the date still stands.
+  const setStatus = (item, status, { clearEvent = false } = {}) =>
+    withRollback(async () => {
+      const { application, job } = item
+      if (application) {
+        const payload = clearEvent ? { status, next_action_date: null, next_action: null } : { status }
+        setApplications((current) =>
+          current.map((a) => (a.id === application.id ? { ...a, ...payload } : a)),
+        )
+        replaceApplication(await api.updateApplication(application.id, payload))
+      } else {
+        // Wishlist -> pipeline: the application row is created now. The
+        // saved flag is left alone; Saved is the shortlist, not a stage.
+        const created = await api.createApplication({ job_id: job.id, status, applied_date: localToday() })
+        setApplications((current) => [created, ...current])
+      }
+    })
+
+  const moveToWishlist = (item) =>
+    withRollback(async () => {
+      const { application, job } = item
+      setApplications((current) => current.filter((a) => a.id !== application.id))
+      setJobs((current) =>
+        current.some((j) => j.id === job.id)
+          ? current.map((j) => (j.id === job.id ? { ...j, is_saved: true } : j))
+          : [{ ...job, is_saved: true }, ...current],
+      )
+      await api.deleteApplication(application.id)
+      // saveJob is idempotent server-side, so this is safe whether or not
+      // the job was already on the shortlist.
+      await api.saveJob(job.id)
+    })
+
+  // Fully off the board: the application (and its history) is deleted and
+  // the job is un-saved. Drag already covers "back to Wishlist".
+  const removeFromBoard = (item) =>
+    withRollback(async () => {
+      const { application, job } = item
+      if (application) setApplications((current) => current.filter((a) => a.id !== application.id))
+      setJobs((current) => current.map((j) => (j.id === job.id ? { ...j, is_saved: false } : j)))
+      if (application) await api.deleteApplication(application.id)
+      if (job.is_saved) await api.unsaveJob(job.id)
+    })
+
+  // Moving between columns, however it's triggered - a drop or the card
+  // menu's "Move to" (the keyboard and screen-reader route).
+  const moveToColumn = (item, target) => {
+    const currentKey = item.application ? columnFor(item.application.status) : 'wishlist'
+    if (currentKey === target.key) return
+    if (target.key === 'wishlist') moveToWishlist(item)
+    else setStatus(item, target.statuses[0], { clearEvent: true })
+  }
+
+  const onDragEnd = ({ active, over }) => {
+    if (!over) return
+    const item = items.find((i) => i.id === active.id)
+    const target = COLUMNS.find((c) => c.key === over.id)
+    if (item && target) moveToColumn(item, target)
+  }
+
+  const saveEvent = async (item, payload) => {
+    closeModal()
+    await withRollback(async () => {
+      const { application } = item
+      setApplications((current) =>
+        current.map((a) => (a.id === application.id ? { ...a, ...payload } : a)),
+      )
+      replaceApplication(await api.updateApplication(application.id, payload))
+    })
+  }
+
+  // Edits go through without an optimistic update: a job edit can be refused
+  // (the row is shared with another user) and the form shows that in place,
+  // so nothing needs rolling back. The returned job is spread into every
+  // place it appears - the jobs list and any application that wraps it.
+  const saveDetails = async (item, jobPayload, applicationPayload) => {
+    const job = await api.editJob(item.job.id, jobPayload)
+    setJobs((current) => current.map((j) => (j.id === job.id ? { ...j, ...job } : j)))
+    setApplications((current) => current.map((a) => (a.job.id === job.id ? { ...a, job } : a)))
+    if (applicationPayload) {
+      replaceApplication(await api.updateApplication(item.application.id, applicationPayload))
+    }
+    closeModal()
+  }
+
+  // A job pasted directly into any column: the same add-a-job flow as the
+  // Jobs page, then immediately placed in whichever column it was added
+  // from - Wishlist saves it, a pipeline column creates the application
+  // straight away (useful for backfilling one you forgot to log).
+  const addJobToColumn = async (job, column) => {
+    closeModal()
+    await withRollback(async () => {
+      if (column.key === 'wishlist') {
+        await api.saveJob(job.id)
+        setJobs((current) => [{ ...job, is_saved: true }, ...current.filter((j) => j.id !== job.id)])
+      } else {
+        setJobs((current) => [job, ...current.filter((j) => j.id !== job.id)])
+        const created = await api.createApplication({
+          job_id: job.id,
+          status: column.statuses[0],
+          applied_date: localToday(),
+        })
+        setApplications((current) => [created, ...current])
+      }
+    })
+  }
+
+  // Figures the columns don't already show. Response rate is the backend's
+  // formula from /api/applications/stats, computed here so it moves with the
+  // board instead of lagging a request behind it: of everything not
+  // withdrawn, how much has progressed past "applied".
+  const active = applications.filter((a) => OPEN_STATUSES.has(a.status)).length
+  const needsFollowUp = applications.filter((a) => a.needs_follow_up).length
+  const considered = applications.filter((a) => a.status !== 'withdrawn').length
+  const heardBack = considered - applications.filter((a) => a.status === 'applied').length
+  const responseRate = considered ? Math.round((100 * heardBack) / considered) : null
+  const nextUp = items
+    .filter((item) => canHaveEvent(item.application) && item.application.next_action_date)
+    .sort((a, b) => eventTime(a.application) - eventTime(b.application))[0]
+  const counts = Object.fromEntries(COLUMNS.map((column) => [column.key, itemsIn(column).length]))
+
+  return (
+    <main className="page tracking-page">
+      <div className="page-header tracking-header">
+        <div>
+          <h1>Tracking</h1>
+          <p className="page-subtitle">Every application in one place, from wishlist to offer.</p>
+        </div>
+      </div>
+
+      {error && <div className="alert error">{error}</div>}
+      {busy && <div className="empty">Loading…</div>}
+
+      {!busy && (
+        <>
+          <section className="dashboard-stats tracking-stats" aria-label="Tracking overview">
+            <div><strong>{active}</strong><span>Active applications</span></div>
+            <div className={needsFollowUp ? 'is-warn' : ''}>
+              <strong>{needsFollowUp}</strong><span>Need a follow-up</span>
+            </div>
+            <div>
+              <strong>{responseRate == null ? '—' : `${responseRate}%`}</strong>
+              <span>Response rate</span>
+            </div>
+            <div>
+              <strong>{nextUp ? relativeDayCap(nextUp.application.next_action_date) : '—'}</strong>
+              <span>
+                {nextUp
+                  ? `${eventLabel(nextUp.application)} · ${nextUp.job.company.name}`
+                  : 'Next event'}
+              </span>
+            </div>
+          </section>
+
+          <div className="tracking-layout">
+            <section className="tracking-board" aria-label="Application board">
+              <div className="tracking-toolbar">
+                <label className="tracking-sort">
+                  <span>Sort by</span>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value)}
+                    disabled={items.length === 0}
+                  >
+                    {Object.entries(SORTS).map(([key, { label }]) => (
+                      <option key={key} value={key}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+                {items.length === 0 && (
+                  <span className="tracking-toolbar-hint">
+                    Use + on a column to add a job, or save one from the Jobs page.
+                  </span>
+                )}
+              </div>
+              <ColumnTabs counts={counts} active={activeColumn} onSelect={scrollToColumn} />
+              <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+                <div className="tracking-columns" ref={columnsRef}>
+                  {COLUMNS.map((column) => (
+                    <Column
+                      key={column.key}
+                      column={column}
+                      items={itemsIn(column)}
+                      sectionRef={(node) => {
+                        columnRefs.current[column.key] = node
+                      }}
+                      onOpen={openModal}
+                      onRemove={removeFromBoard}
+                      onSetStatus={setStatus}
+                      onMove={moveToColumn}
+                    />
+                  ))}
+                </div>
+              </DndContext>
+            </section>
+
+            <UpcomingSidebar items={items} />
+          </div>
+        </>
+      )}
+
+      {modal?.kind === 'add' && (
+        <Modal title={`Add a job to ${modal.column.label}`} onClose={closeModal}>
+          <QuickAddJob onAdded={(job) => addJobToColumn(job, modal.column)} onCancel={closeModal} />
+        </Modal>
+      )}
+      {modal?.kind === 'edit' && (
+        <Modal title="Edit job" onClose={closeModal}>
+          <DetailsEditor
+            item={modal.item}
+            onSave={(jobPayload, applicationPayload) => saveDetails(modal.item, jobPayload, applicationPayload)}
+            onCancel={closeModal}
+          />
+        </Modal>
+      )}
+      {modal?.kind === 'event' && canHaveEvent(modal.item.application) && (
+        <Modal
+          title={`${modal.item.application.next_action_date ? 'Edit' : 'Add'} ${eventLabel(modal.item.application).toLowerCase()}`}
+          onClose={closeModal}
+        >
+          <EventEditor
+            application={modal.item.application}
+            onSave={(payload) => saveEvent(modal.item, payload)}
+            onCancel={closeModal}
+          />
+        </Modal>
+      )}
+    </main>
+  )
+}

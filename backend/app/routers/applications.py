@@ -33,7 +33,7 @@ from app.models import (
 )
 from app.rate_limit import ai_rate_limit
 from app.routers.documents import _match_summary, _resume_source_text
-from app.routers.jobs import _get_or_create_company, require_description
+from app.routers.jobs import SOURCE_MANUAL, _get_or_create_company, require_description
 from app.routers.resumes import require_active_resume
 from app.schemas import (
     ApplicationCreate,
@@ -52,8 +52,6 @@ from app.services.user_state import decorate_jobs
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 communications_router = APIRouter(prefix="/api/communications", tags=["applications"])
 
-# Jobs for applications sent elsewhere, entered by hand rather than pasted.
-SOURCE_MANUAL = "manual"
 # Still waiting on the employer: the stages where following up makes sense.
 OPEN_STATUSES = frozenset(
     {ApplicationStatus.applied, ApplicationStatus.online_assessment, ApplicationStatus.interview}

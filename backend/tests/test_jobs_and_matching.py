@@ -1,5 +1,7 @@
 """Pasted jobs, saving, and on-demand match analysis."""
 
+from tests.conftest import SAMPLE_JOB_TEXT
+
 
 # --- Saving ---------------------------------------------------------------
 
@@ -186,3 +188,79 @@ def test_your_jobs_page_is_private(client, auth, with_job):
     with_job(a)
     b, _, _ = auth()
     assert client.get("/api/jobs", headers=b).json() == []
+
+
+def test_manual_job_needs_only_title_and_company(client, auth):
+    headers, _, _ = auth()
+    r = client.post(
+        "/api/jobs/manual",
+        headers=headers,
+        json={"title": "Platform Engineer", "company": "Initech"},
+    )
+    assert r.status_code == 201, r.text
+    job = r.json()
+    assert job["title"] == "Platform Engineer"
+    assert job["company"]["name"] == "Initech"
+    assert job["source_api"] == "manual"
+    assert job["url"] is None
+    # It shows up as one of this user's jobs, like any other way in.
+    assert [j["id"] for j in client.get("/api/jobs", headers=headers).json()] == [job["id"]]
+
+    # Two hand-entered jobs never collapse into one row.
+    again = client.post(
+        "/api/jobs/manual",
+        headers=headers,
+        json={"title": "Platform Engineer", "company": "Initech"},
+    )
+    assert again.status_code == 201
+    assert again.json()["id"] != job["id"]
+
+    # Blank essentials are refused; a link is optional but must be a real one.
+    assert client.post("/api/jobs/manual", headers=headers, json={"title": "", "company": "X"}).status_code == 422
+    bad_url = client.post(
+        "/api/jobs/manual",
+        headers=headers,
+        json={"title": "Eng", "company": "X", "url": "http://127.0.0.1/admin"},
+    )
+    assert bad_url.status_code == 422
+
+
+def test_edit_job_only_while_you_are_its_only_owner(client, auth):
+    headers, _, _ = auth()
+    # A hand-entered job is a fresh row, so this user is its only owner.
+    job = client.post(
+        "/api/jobs/manual", headers=headers, json={"title": "Backend Engineer", "company": "Acme Ltd"}
+    ).json()
+    base = f"/api/jobs/{job['id']}"
+
+    edited = client.patch(
+        base,
+        headers=headers,
+        json={"title": "Senior Backend Engineer", "company": "Acme plc", "url": "https://example.com/careers/9"},
+    )
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["title"] == "Senior Backend Engineer"
+    assert body["company"]["name"] == "Acme plc"
+    assert body["url"] == "https://example.com/careers/9"
+
+    # An empty url clears the Apply link; a bad one is refused like anywhere else.
+    assert client.patch(base, headers=headers, json={"url": ""}).json()["url"] is None
+    assert client.patch(base, headers=headers, json={"url": "http://169.254.169.254/"}).status_code == 422
+
+    # Someone who never added the job can't see it to edit it.
+    other, _, _ = auth(name="Other User")
+    assert client.patch(base, headers=other, json={"title": "Hijacked"}).status_code == 404
+
+    # A pasted posting is one shared row: once two people have added it,
+    # neither may edit it.
+    shared_url = f"https://example.com/jobs/shared-{job['id']}"
+    for h in (headers, other):
+        r = client.post(
+            "/api/jobs/from-text",
+            headers=h,
+            json={"text": SAMPLE_JOB_TEXT, "title": "Shared", "company": "Both", "url": shared_url},
+        )
+        assert r.status_code == 201, r.text
+    shared_id = r.json()["id"]
+    assert client.patch(f"/api/jobs/{shared_id}", headers=headers, json={"title": "Mine"}).status_code == 403
