@@ -1250,7 +1250,7 @@ a.btn {
   max-width: none;
 }
 
-.master-resume-card { overflow: visible; }
+.master-resume-card { overflow: hidden; }
 .master-resume-heading {
   display: flex;
   align-items: flex-start;

@@ -31,7 +31,7 @@ def _resume_source_text(resume) -> str:
         return resume.extracted_text or ""
 
     lines: list[str] = []
-    for key in ("full_name", "headline", "summary"):
+    for key in ("full_name", "headline", "contact_line", "summary"):
         value = str(master.get(key) or "").strip()
         if value:
             lines.append(value)
@@ -39,13 +39,31 @@ def _resume_source_text(resume) -> str:
         heading = str(section.get("heading") or "").strip()
         if heading:
             lines.append(f"\n{heading}")
+        for entry in section.get("entries") or []:
+            left = " | ".join(
+                str(entry.get(key) or "").strip()
+                for key in ("title", "meta")
+                if str(entry.get(key) or "").strip()
+            )
+            right = str(entry.get("right") or "").strip()
+            if left or right:
+                lines.append(" - ".join(part for part in (left, right) if part))
+            subtitle = str(entry.get("subtitle") or "").strip()
+            subtitle_right = str(entry.get("subtitle_right") or "").strip()
+            if subtitle or subtitle_right:
+                lines.append(" - ".join(part for part in (subtitle, subtitle_right) if part))
+            for bullet in entry.get("bullets") or []:
+                bullet = str(bullet).strip()
+                if bullet:
+                    lines.append(f"- {bullet}")
         for bullet in section.get("bullets") or []:
             bullet = str(bullet).strip()
             if bullet:
                 lines.append(f"- {bullet}")
     skills = [str(skill).strip() for skill in master.get("skills") or [] if str(skill).strip()]
     if skills:
-        lines.append("\nSkills: " + ", ".join(skills))
+        lines.append("\nTechnical Skills")
+        lines.extend(skills)
     return "\n".join(lines).strip() or (resume.extracted_text or "")
 
 
