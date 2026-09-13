@@ -19,6 +19,12 @@ def read(p):
     return (ROOT / p).read_text(encoding="utf-8", errors="replace")
 
 
+def read_if(p):
+    """A file that may or may not exist, for checks that follow code between files."""
+    path = ROOT / p
+    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+
+
 def ck(section, label, cond, detail=""):
     global checks
     checks += 1
@@ -205,12 +211,12 @@ ck("ai", "original AI output is never overwritten", "never overwritten" in docum
 ck("ai", "no auto-apply or auto-send anywhere",
    not re.search(r"auto_apply|send_application|submit_application", read("backend/app/routers/documents.py")))
 
-head("Nav - Home, Jobs, Saved, History, Calendar, Profile")
+head("Nav - Home, Jobs, Saved, Tracking, History, Calendar, Profile")
 nav = read("frontend/src/components/BottomNav.jsx")
 # Matches single- or double-quoted routes: the UI branch reformatted this file.
 routes = re.findall(r"to: .(/[a-z-]*).", nav)
 ck("nav", "core pages are in the nav", {"/jobs", "/saved", "/history", "/profile"} <= set(routes), str(routes))
-ck("nav", "at most 6 nav items", 1 <= len(routes) <= 6, str(routes))
+ck("nav", "at most 7 nav items", 1 <= len(routes) <= 7, str(routes))
 
 head("Apply link - required everywhere a job is shown")
 apply = read("frontend/src/components/ApplyLink.jsx")
@@ -250,8 +256,11 @@ ck("ssrf", "response size capped", "MAX_PAGE_BYTES" in job_url)
 head("Match percentage is presented honestly")
 match_panel = read("frontend/src/components/MatchPanel.jsx")
 ck("ui", "match panel exists", bool(match_panel))
-ck("ui", "paste UI on the main page", "addJobFromUrl" in read("frontend/src/pages/Jobs.jsx"))
-ck("ui", "text fallback offered", "addJobFromText" in read("frontend/src/pages/Jobs.jsx"))
+# The paste box may live in a component the Jobs page renders, so follow it there.
+jobs_page = read("frontend/src/pages/Jobs.jsx")
+add_job = jobs_page + read_if("frontend/src/components/AddJobForm.jsx") + read_if("frontend/src/components/QuickAddJob.jsx")
+ck("ui", "paste UI on the main page", "addJobFromUrl" in add_job)
+ck("ui", "text fallback offered", "addJobFromText" in add_job)
 ck("ui", "score never claimed as a hiring prediction", "not a prediction" in match_panel)
 ck("ui", "requirements met and missing both shown",
    "requirements_met" in match_panel and "requirements_missing" in match_panel)
