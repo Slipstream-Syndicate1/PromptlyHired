@@ -1259,6 +1259,12 @@ a.btn {
   margin-bottom: 18px;
 }
 .master-resume-heading .job-company { margin: 4px 0 0; max-width: 680px; }
+.master-resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
 .resume-workspace,
 .document-workspace {
   display: grid;

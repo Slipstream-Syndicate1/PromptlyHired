@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import ResumePreview from './ResumePreview.jsx'
+import { exportDocumentPdf } from '../lib/exportPdf.js'
 
 const ACCEPT = '.pdf,.docx,.txt'
 const ACCEPT_TYPES = [
@@ -83,7 +84,10 @@ function MasterResumeEditor({ resume, user, onSaved }) {
           <h2 className="section-title" style={{ marginTop: 0 }}>Master resume</h2>
           <p className="job-company">This is your editable base resume. New tailored resumes and cover letters use the saved version.</p>
         </div>
-        <button className="btn primary" type="button" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : dirty ? 'Save master' : 'Saved'}</button>
+        <div className="master-resume-actions">
+          <button className="btn primary" type="button" onClick={save} disabled={!dirty || busy}>{busy ? 'Saving…' : dirty ? 'Save master' : 'Saved'}</button>
+          <button className="btn" type="button" onClick={() => exportDocumentPdf('resume', master)} disabled={busy}>Export PDF</button>
+        </div>
       </div>
 
       {error && <div className="alert error">{error}</div>}
