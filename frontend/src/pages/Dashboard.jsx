@@ -31,9 +31,9 @@ const ACTIONS = [
   },
   {
     to: "/history",
-    title: "Application history",
+    title: "Application Tracker",
     description:
-      "Review the resumes and application documents you have generated.",
+      "Track your applications and see how many you've sent, received responses for, and more.",
     icon: "history",
     cta: "View history",
   },
@@ -60,19 +60,21 @@ function ActionIcon({ name }) {
 export default function Dashboard() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState([]);
+  const [savedJobs, setSavedJobs] = useState([]);
   const [resume, setResume] = useState(null);
 
   useEffect(() => {
-    Promise.all([api.listJobs(), api.getActiveResume()])
-      .then(([jobList, activeResume]) => {
+    Promise.all([api.listJobs(), api.listSaved(), api.getActiveResume()])
+      .then(([jobList, savedJobList, activeResume]) => {
         setJobs(jobList);
+        setSavedJobs(savedJobList);
         setResume(activeResume);
       })
       .catch(() => {});
   }, []);
 
   const firstName = user?.name?.trim()?.split(/\s+/)[0];
-  const savedCount = jobs.filter((job) => job.is_saved).length;
+  const savedCount = savedJobs.length;
 
   return (
     <main className="page dashboard-page">
@@ -92,11 +94,11 @@ export default function Dashboard() {
           <section className="dashboard-stats" aria-label="Job search overview">
             <div>
               <strong>{jobs.length}</strong>
-              <span>Jobs</span>
+              <span>Jobs Applied</span>
             </div>
             <div>
               <strong>{savedCount}</strong>
-              <span>Saved</span>
+              <span>Saved Jobs</span>
             </div>
             <div>
               <strong>{resume ? "Ready" : "Missing"}</strong>
