@@ -192,6 +192,9 @@ export const api = {
   listResumes: () => request('/api/resumes'),
   uploadResume: (file) => upload('/api/resumes', file),
   reanalyzeResume: (id) => request(`/api/resumes/${id}/analyze`, { method: 'POST' }),
+  // Removes the file too, and everything derived from it. A CV is personal data,
+  // so the user has to be able to take it back.
+  deleteResume: (id) => request(`/api/resumes/${id}`, { method: 'DELETE' }),
   updateSkillProfile: (id, payload) =>
     request(`/api/resumes/${id}/skill-profile`, { method: 'PATCH', body: payload }),
   updateMasterResume: (id, master_content) =>

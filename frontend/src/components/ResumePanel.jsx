@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './ResumePanel.css'
 import { api } from '../api/client'
+import ConfirmDialog from './ConfirmDialog.jsx'
 import ResumeEditor, { emptyEntry } from './ResumeEditor.jsx'
 import ResumePreview from './ResumePreview.jsx'
 import { exportDocumentPdf } from '../lib/exportPdf.js'
@@ -149,6 +150,7 @@ export default function ResumePanel({ resume, onChange, user }) {
   const [message, setMessage] = useState('')
   const [profile, setProfile] = useState(resume?.skill_profile ?? null)
   const [dirty, setDirty] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => { setProfile(resume?.skill_profile ?? null); setDirty(false) }, [resume])
 
@@ -167,6 +169,19 @@ export default function ResumePanel({ resume, onChange, user }) {
   const saveProfile = () => run(async () => { const updated = await api.updateSkillProfile(resume.id, { skills: profile.skills, job_titles: profile.job_titles, domains: profile.domains, locations: profile.locations, seniority: profile.seniority, years_experience: profile.years_experience, summary: profile.summary }); setProfile(updated); setDirty(false) }, 'Skill profile saved. Your job feed will use it.')
   const reanalyse = () => run(async () => { setProfile(await api.reanalyzeResume(resume.id)); setDirty(false) }, 'Re-analysed your resume.')
 
+  const remove = async () => {
+    let deleted = false
+    await run(async () => {
+      await api.deleteResume(resume.id)
+      setProfile(null)
+      // An older CV, if there is one, becomes the active one.
+      onChange(await api.getActiveResume())
+      deleted = true
+    }, 'Resume deleted.')
+    // On failure the dialog stays open, with the reason shown on the page behind it.
+    if (deleted) setConfirmingDelete(false)
+  }
+
   return (
     <>
       {resume && <MasterResumeEditor resume={resume} user={user} onSaved={onChange} />}
@@ -178,6 +193,7 @@ export default function ResumePanel({ resume, onChange, user }) {
         <div className="job-actions">
           <button className={resume ? 'btn' : 'btn primary'} type="button" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? 'Working…' : resume ? 'Replace uploaded resume' : 'Upload resume'}</button>
           {resume && <button className="btn" type="button" disabled={busy} onClick={reanalyse}>Re-analyse</button>}
+          {resume && <button className="btn link" type="button" disabled={busy} onClick={() => setConfirmingDelete(true)}>Delete uploaded resume</button>}
         </div>
         <p className="fine-print">PDF, DOCX or plain text, up to 10 MB. Replacing it keeps your saved master resume.</p>
         <input ref={inputRef} type="file" accept={`${ACCEPT},${ACCEPT_TYPES}`} onChange={pick} hidden />
@@ -194,6 +210,29 @@ export default function ResumePanel({ resume, onChange, user }) {
         </>}
         {resume && !profile && <div className="alert info">We couldn’t analyse this resume automatically. Try “Re-analyse”, or check the server has an <code>ANTHROPIC_API_KEY</code> configured.</div>}
       </div>
+
+      {confirmingDelete && resume && (
+        <ConfirmDialog
+          title="Delete this resume?"
+          phrase="Delete Resume"
+          confirmLabel="Confirm Delete"
+          busy={busy}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={remove}
+        >
+          <p>
+            <strong>{resume.original_filename}</strong> and everything built from it will be
+            deleted:
+          </p>
+          <ul>
+            <li>its skill profile, which powers your job feed and recommendations</li>
+            <li>its master resume</li>
+            <li>the match scores worked out against it</li>
+            <li>the resumes and cover letters generated from it</li>
+          </ul>
+          <p>Your tracked applications are kept, including the record that you applied.</p>
+        </ConfirmDialog>
+      )}
     </>
   )
 }
