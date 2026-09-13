@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { api } from '../api/client'
+import Modal from '../components/Modal.jsx'
 import QuickAddJob from '../components/QuickAddJob.jsx'
 import ApplyLink from '../components/ApplyLink.jsx'
 import { OPEN_STATUSES, statusLabel } from '../lib/applicationStatus.js'
-import { exactDateTime, relativeDay, relativeTime } from '../lib/relativeTime.js'
+import { relativeDay } from '../lib/relativeTime.js'
 
 /**
  * Board columns, left to right. Every application status maps to exactly one
@@ -106,10 +115,7 @@ function EventEditor({ application, onSave, onCancel }) {
   }
 
   return (
-    <form className="tracking-event-form" onSubmit={submit}>
-      {/* Stacked, not the app-wide .filter-grid: that switches to 2 columns
-          on viewport width, but a tracking column stays ~250px wide even on
-          a full desktop screen - a viewport breakpoint doesn't know that. */}
+    <form className="tracking-form" onSubmit={submit}>
       <label className="field">
         <span>Type</span>
         <select value={type} onChange={(e) => setType(e.target.value)}>
@@ -179,7 +185,7 @@ function DetailsEditor({ item, onSave, onCancel }) {
   }
 
   return (
-    <form className="tracking-event-form" onSubmit={submit}>
+    <form className="tracking-form" onSubmit={submit}>
       {error && <div className="alert error">{error}</div>}
       <label className="field">
         <span>Job title</span>
@@ -209,10 +215,8 @@ function DetailsEditor({ item, onSave, onCancel }) {
   )
 }
 
-function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSaveDetails }) {
+function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
   const { job, application } = item
-  const [editingEvent, setEditingEvent] = useState(false)
-  const [editingDetails, setEditingDetails] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id })
@@ -226,37 +230,25 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSave
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [menuOpen])
 
-  const saveEvent = async (payload) => {
-    await onSaveEvent(item, payload)
-    setEditingEvent(false)
-  }
-
-  const saveDetails = async (jobPayload, applicationPayload) => {
-    await onSaveDetails(item, jobPayload, applicationPayload)
-    setEditingDetails(false)
-  }
-
   // A column that holds two statuses (Interview: interview / online
   // assessment; Closed: rejected / withdrawn) shows both on the card as a
   // segmented control - a two-way choice shouldn't be buried in a menu.
   const shared = application && column.statuses.length > 1
   const overdue = application?.next_action_date && eventTime(application).getTime() < Date.now()
+  // The one time-based chip worth showing: silence that needs acting on.
+  // "Moved 2 minutes ago" said nothing the sort order didn't already.
+  const quiet = application?.needs_follow_up && !application.next_action_date
 
   return (
     <article
       ref={setNodeRef}
       className={`card tracking-card${isDragging ? ' dragging' : ''}`}
       style={{ transform: CSS.Translate.toString(transform) }}
+      {...listeners}
+      {...attributes}
+      role="group"
+      aria-roledescription="draggable card"
     >
-      {/* A dedicated handle, not the whole card, so the title link stays clickable. */}
-      <button className="tracking-drag-handle" {...listeners} {...attributes} aria-label="Drag to move">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
-          <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
-          <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
-        </svg>
-      </button>
-
       <h3 className="job-title">
         <Link to={`/jobs/${job.id}`}>{job.title}</Link>
       </h3>
@@ -288,19 +280,17 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSave
             Applied {relativeDay(application.applied_date)}
           </span>
         )}
-        {/* Redundant with "Applied" on the Applied column itself - only
-            useful once a card has actually moved somewhere further along. */}
-        {application && application.status !== 'applied' && (
-          <span className="chip" title={exactDateTime(application.status_updated_at)}>
-            Moved {relativeTime(application.status_updated_at)}
+        {quiet && (
+          <span className="chip quiet">
+            No reply in {application.days_since_update} day{application.days_since_update === 1 ? '' : 's'}
           </span>
         )}
         {job.match_percentage != null && <span className="chip">{job.match_percentage}% match</span>}
         {job.has_documents && <span className="chip analysed">Documents</span>}
-        {application?.next_action_date && !editingEvent && (
+        {application?.next_action_date && (
           <button
             className={`chip event event-${eventColor(application.next_action_type)}${overdue ? ' overdue' : ''}`}
-            onClick={() => setEditingEvent(true)}
+            onClick={() => onOpen('event', item)}
             title={`${eventLabel(application.next_action_type)} · ${application.next_action_date}`}
           >
             <i className="legend-dot" aria-hidden="true" />
@@ -310,67 +300,61 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSave
         )}
       </div>
 
-      {editingDetails ? (
-        <DetailsEditor item={item} onSave={saveDetails} onCancel={() => setEditingDetails(false)} />
-      ) : editingEvent && application ? (
-        <EventEditor application={application} onSave={saveEvent} onCancel={() => setEditingEvent(false)} />
-      ) : (
-        <div className="tracking-card-actions">
-          <ApplyLink job={job} variant="view" />
-          {/* Always the same icon in the same place, whatever's inside it -
-              rather than icons popping in or out depending on card state.
-              Moving between columns is drag-only; what lives here is what
-              drag can't express. */}
-          <div className="tracking-card-menu" ref={menuRef}>
-            <button
-              className="icon-btn"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="More actions"
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              title="More actions"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="tracking-card-menu-list" role="menu">
+      <div className="tracking-card-actions">
+        <ApplyLink job={job} variant="view" />
+        {/* Always the same icon in the same place, whatever's inside it -
+            rather than icons popping in or out depending on card state.
+            Moving between columns is drag-only; what lives here is what
+            drag can't express. */}
+        <div className="tracking-card-menu" ref={menuRef}>
+          <button
+            className="icon-btn"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="More actions"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            title="More actions"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="tracking-card-menu-list" role="menu">
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onOpen('edit', item)
+                }}
+              >
+                Edit
+              </button>
+              {application && (
                 <button
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false)
-                    setEditingDetails(true)
+                    onOpen('event', item)
                   }}
                 >
-                  Edit
+                  {application.next_action_date ? 'Edit event' : 'Add event'}
                 </button>
-                {application && (
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      setEditingEvent(true)
-                    }}
-                  >
-                    {application.next_action_date ? 'Edit event' : 'Add event'}
-                  </button>
-                )}
-                <button
-                  role="menuitem"
-                  className="danger"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    onRemove(item)
-                  }}
-                >
-                  Remove from board
-                </button>
-              </div>
-            )}
-          </div>
+              )}
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onRemove(item)
+                }}
+              >
+                Remove from board
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </article>
   )
 }
@@ -422,63 +406,80 @@ function UpcomingSidebar({ items }) {
   )
 }
 
-function ColumnAdd({ column, onAdded }) {
-  const [open, setOpen] = useState(false)
-
-  if (!open) {
-    return (
-      <div className="tracking-add-job-row">
-        <button className="btn tracking-add-job" onClick={() => setOpen(true)}>
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" />
-          </svg>
-          <span>Add a job</span>
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="tracking-add-job-form">
-      <QuickAddJob
-        onAdded={async (job) => {
-          await onAdded(job, column)
-          setOpen(false)
-        }}
-        onCancel={() => setOpen(false)}
-      />
-    </div>
-  )
-}
-
-function Column({ column, items, onRemove, onSetStatus, onSaveEvent, onSaveDetails, onAddJob }) {
+function Column({ column, items, sectionRef, onOpen, onRemove, onSetStatus }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.key })
 
   return (
-    <section className={`tracking-column stage-${column.key}${isOver ? ' over' : ''}`}>
+    <section
+      ref={sectionRef}
+      className={`tracking-column stage-${column.key}${isOver ? ' over' : ''}`}
+    >
       <div className="tracking-column-head">
         <div>
           <h2>{column.label}</h2>
           <p>{column.hint}</p>
         </div>
         <span className="tracking-count">{items.length}</span>
+        <button
+          type="button"
+          className="tracking-column-add"
+          onClick={() => onOpen('add', null, column)}
+          aria-label={`Add a job to ${column.label}`}
+          title={`Add a job to ${column.label}`}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" />
+          </svg>
+        </button>
       </div>
-      <ColumnAdd column={column} onAdded={onAddJob} />
       <div className="tracking-column-body" ref={setNodeRef}>
-        {items.length === 0 && <p className="tracking-drop-hint">Drop a job here</p>}
+        {items.length === 0 && <p className="tracking-empty-hint">Nothing here yet</p>}
         {items.map((item) => (
           <TrackingCard
             key={item.id}
             item={item}
             column={column}
+            onOpen={onOpen}
             onRemove={onRemove}
             onSetStatus={onSetStatus}
-            onSaveEvent={onSaveEvent}
-            onSaveDetails={onSaveDetails}
           />
         ))}
       </div>
     </section>
+  )
+}
+
+/**
+ * On narrow screens the board scrolls sideways one column at a time, with
+ * nothing saying there are more. These tabs are the map: tap to jump, and
+ * the active one follows the scroll position. Hidden by CSS on wide screens.
+ */
+function ColumnTabs({ counts, active, onSelect }) {
+  const activeRef = useRef(null)
+
+  // The strip itself scrolls on a narrow screen: keep the active tab in view
+  // as the board is swiped, so the map never points off-screen.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [active])
+
+  return (
+    <div className="tracking-column-tabs" role="tablist" aria-label="Board columns">
+      {COLUMNS.map((column) => (
+        <button
+          key={column.key}
+          ref={active === column.key ? activeRef : null}
+          type="button"
+          role="tab"
+          aria-selected={active === column.key}
+          className={`stage-${column.key}${active === column.key ? ' on' : ''}`}
+          onClick={() => onSelect(column.key)}
+        >
+          {column.label}
+          <span>{counts[column.key]}</span>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -494,10 +495,18 @@ export default function Tracking() {
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   const [sortKey, setSortKey] = useState('recent')
-  // No activation constraint: drags start from a dedicated handle, so there
-  // is no click-vs-drag ambiguity to disambiguate, and any distance/delay
-  // threshold just reads as lag.
-  const sensors = useSensors(useSensor(PointerSensor))
+  // What's open in the modal: { kind: 'add' | 'edit' | 'event', item, column }.
+  const [modal, setModal] = useState(null)
+  const [activeColumn, setActiveColumn] = useState(COLUMNS[0].key)
+  const columnsRef = useRef(null)
+  const columnRefs = useRef({})
+  // The whole card is the drag handle. A 5px threshold keeps clicks on the
+  // title, buttons and menu working as clicks; on touch, a short hold starts
+  // a drag so an ordinary swipe still scrolls the board.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
 
   const items = useMemo(
     () => toItems(applications, jobs).sort(SORTS[sortKey].compare),
@@ -517,6 +526,36 @@ export default function Tracking() {
       .catch((err) => setError(err.message))
       .finally(() => setBusy(false))
   }, [])
+
+  // Keep the mobile column tabs in step with whichever column is scrolled
+  // into view. On wide screens nothing scrolls, so this never fires.
+  useEffect(() => {
+    const el = columnsRef.current
+    if (!el) return
+    const onScroll = () => {
+      let nearest = COLUMNS[0].key
+      let best = Infinity
+      for (const [key, node] of Object.entries(columnRefs.current)) {
+        if (!node) continue
+        const distance = Math.abs(node.offsetLeft - el.scrollLeft)
+        if (distance < best) {
+          best = distance
+          nearest = key
+        }
+      }
+      setActiveColumn(nearest)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [busy])
+
+  const scrollToColumn = (key) => {
+    setActiveColumn(key)
+    columnRefs.current[key]?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+  }
+
+  const openModal = (kind, item = null, column = null) => setModal({ kind, item, column })
+  const closeModal = () => setModal(null)
 
   const replaceApplication = (updated) =>
     setApplications((current) => current.map((a) => (a.id === updated.id ? updated : a)))
@@ -588,14 +627,16 @@ export default function Tracking() {
     else setStatus(item, target.statuses[0])
   }
 
-  const saveEvent = (item, payload) =>
-    withRollback(async () => {
+  const saveEvent = async (item, payload) => {
+    closeModal()
+    await withRollback(async () => {
       const { application } = item
       setApplications((current) =>
         current.map((a) => (a.id === application.id ? { ...a, ...payload } : a)),
       )
       replaceApplication(await api.updateApplication(application.id, payload))
     })
+  }
 
   // Edits go through without an optimistic update: a job edit can be refused
   // (the row is shared with another user) and the form shows that in place,
@@ -608,14 +649,16 @@ export default function Tracking() {
     if (applicationPayload) {
       replaceApplication(await api.updateApplication(item.application.id, applicationPayload))
     }
+    closeModal()
   }
 
   // A job pasted directly into any column: the same add-a-job flow as the
   // Jobs page, then immediately placed in whichever column it was added
   // from - Wishlist saves it, a pipeline column creates the application
   // straight away (useful for backfilling one you forgot to log).
-  const addJobToColumn = (job, column) =>
-    withRollback(async () => {
+  const addJobToColumn = async (job, column) => {
+    closeModal()
+    await withRollback(async () => {
       if (column.key === 'wishlist') {
         await api.saveJob(job.id)
         setJobs((current) => [{ ...job, is_saved: true }, ...current.filter((j) => j.id !== job.id)])
@@ -629,10 +672,21 @@ export default function Tracking() {
         setApplications((current) => [created, ...current])
       }
     })
+  }
 
-  const inProgress = applications.filter((a) => OPEN_STATUSES.has(a.status)).length
-  const offers = applications.filter((a) => a.status === 'offer').length
-  const upcomingCount = applications.filter((a) => a.next_action_date).length
+  // Figures the columns don't already show. Response rate is the backend's
+  // formula from /api/applications/stats, computed here so it moves with the
+  // board instead of lagging a request behind it: of everything not
+  // withdrawn, how much has progressed past "applied".
+  const active = applications.filter((a) => OPEN_STATUSES.has(a.status)).length
+  const needsFollowUp = applications.filter((a) => a.needs_follow_up).length
+  const considered = applications.filter((a) => a.status !== 'withdrawn').length
+  const heardBack = considered - applications.filter((a) => a.status === 'applied').length
+  const responseRate = considered ? Math.round((100 * heardBack) / considered) : null
+  const nextUp = items
+    .filter((item) => item.application?.next_action_date)
+    .sort((a, b) => eventTime(a.application) - eventTime(b.application))[0]
+  const counts = Object.fromEntries(COLUMNS.map((column) => [column.key, itemsIn(column).length]))
 
   return (
     <main className="page tracking-page">
@@ -641,7 +695,6 @@ export default function Tracking() {
           <h1>Tracking</h1>
           <p className="page-subtitle">Every application in one place, from wishlist to offer.</p>
         </div>
-        <Link className="btn" to="/jobs">Add a job</Link>
       </div>
 
       {error && <div className="alert error">{error}</div>}
@@ -650,17 +703,26 @@ export default function Tracking() {
       {!busy && (
         <>
           <section className="dashboard-stats tracking-stats" aria-label="Tracking overview">
-            <div><strong>{items.length}</strong><span>On the board</span></div>
-            <div><strong>{inProgress}</strong><span>In progress</span></div>
-            <div><strong>{offers}</strong><span>Offers</span></div>
-            <div><strong>{upcomingCount}</strong><span>Upcoming events</span></div>
+            <div><strong>{active}</strong><span>Active applications</span></div>
+            <div className={needsFollowUp ? 'is-warn' : ''}>
+              <strong>{needsFollowUp}</strong><span>Need a follow-up</span>
+            </div>
+            <div>
+              <strong>{responseRate == null ? '—' : `${responseRate}%`}</strong>
+              <span>Response rate</span>
+            </div>
+            <div>
+              <strong>{nextUp ? relativeDay(nextUp.application.next_action_date) : '—'}</strong>
+              <span>
+                {nextUp
+                  ? `${eventLabel(nextUp.application.next_action_type)} · ${nextUp.job.company.name}`
+                  : 'Next event'}
+              </span>
+            </div>
           </section>
 
           <div className="tracking-layout">
             <section className="tracking-board" aria-label="Application board">
-              {/* Board-level controls live on the board, like the calendar's
-                  month toolbar lives on the calendar - not up in the page
-                  header where they read as page-level actions. */}
               <div className="tracking-toolbar">
                 <label className="tracking-sort">
                   <span>Sort by</span>
@@ -674,20 +736,26 @@ export default function Tracking() {
                     ))}
                   </select>
                 </label>
-                <span className="tracking-toolbar-hint">Drag cards between columns to update their status</span>
+                {items.length === 0 && (
+                  <span className="tracking-toolbar-hint">
+                    Use + on a column to add a job, or save one from the Jobs page.
+                  </span>
+                )}
               </div>
+              <ColumnTabs counts={counts} active={activeColumn} onSelect={scrollToColumn} />
               <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-                <div className="tracking-columns">
+                <div className="tracking-columns" ref={columnsRef}>
                   {COLUMNS.map((column) => (
                     <Column
                       key={column.key}
                       column={column}
                       items={itemsIn(column)}
+                      sectionRef={(node) => {
+                        columnRefs.current[column.key] = node
+                      }}
+                      onOpen={openModal}
                       onRemove={removeFromBoard}
                       onSetStatus={setStatus}
-                      onSaveEvent={saveEvent}
-                      onSaveDetails={saveDetails}
-                      onAddJob={addJobToColumn}
                     />
                   ))}
                 </div>
@@ -697,6 +765,33 @@ export default function Tracking() {
             <UpcomingSidebar items={items} />
           </div>
         </>
+      )}
+
+      {modal?.kind === 'add' && (
+        <Modal title={`Add a job to ${modal.column.label}`} onClose={closeModal}>
+          <QuickAddJob onAdded={(job) => addJobToColumn(job, modal.column)} onCancel={closeModal} />
+        </Modal>
+      )}
+      {modal?.kind === 'edit' && (
+        <Modal title="Edit job" onClose={closeModal}>
+          <DetailsEditor
+            item={modal.item}
+            onSave={(jobPayload, applicationPayload) => saveDetails(modal.item, jobPayload, applicationPayload)}
+            onCancel={closeModal}
+          />
+        </Modal>
+      )}
+      {modal?.kind === 'event' && modal.item.application && (
+        <Modal
+          title={modal.item.application.next_action_date ? 'Edit event' : 'Add event'}
+          onClose={closeModal}
+        >
+          <EventEditor
+            application={modal.item.application}
+            onSave={(payload) => saveEvent(modal.item, payload)}
+            onCancel={closeModal}
+          />
+        </Modal>
       )}
     </main>
   )
