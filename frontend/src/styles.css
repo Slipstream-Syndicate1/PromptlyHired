@@ -6,6 +6,10 @@
   --bg-gradient: radial-gradient(circle at 8% 0%, rgba(45, 212, 191, .26), transparent 28%), radial-gradient(circle at 100% 28%, rgba(251, 113, 133, .2), transparent 26%), radial-gradient(circle at 42% 100%, rgba(56, 189, 248, .17), transparent 35%), linear-gradient(135deg, #090f1d 0%, #122238 48%, #101629 100%);
   --surface: rgba(19, 29, 51, .78);
   --surface-2: rgba(34, 47, 74, .82);
+  /* Opaque: for dialogs over a dimmed page, where a translucent surface
+     just picks up the backdrop and goes muddy. */
+  --surface-solid: #141f36;
+  --backdrop: rgba(4, 8, 20, .6);
   --border: rgba(186, 203, 228, .2);
   --text: #f5f7ff;
   --muted: #a5b1c8;
@@ -40,6 +44,8 @@
   --bg-gradient: radial-gradient(circle at 0% 0%, rgba(45, 212, 191, .25), transparent 28%), radial-gradient(circle at 100% 22%, rgba(251, 113, 133, .17), transparent 25%), radial-gradient(circle at 48% 100%, rgba(96, 165, 250, .18), transparent 36%), linear-gradient(135deg, #fcfdff 0%, #f1f6fb 52%, #edf3f8 100%);
   --surface: rgba(255, 255, 255, .76);
   --surface-2: rgba(235, 241, 250, .9);
+  --surface-solid: #ffffff;
+  --backdrop: rgba(21, 32, 57, .42);
   --border: rgba(71, 91, 122, .18);
   --text: #152039;
   --muted: #68758e;
@@ -212,7 +218,7 @@ h1, h2, h3, strong { font-family: 'Avenir Next', 'Trebuchet MS', sans-serif; }
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   background: var(--nav-bg);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
@@ -242,6 +248,11 @@ h1, h2, h3, strong { font-family: 'Avenir Next', 'Trebuchet MS', sans-serif; }
 }
 
 @media (min-width: 768px) {
+  /* Desktop: collapsed; BottomNav.css keeps an icon rail visible over
+     this. Hover reveals the full navigation. Keyboard focus reveals it too
+     (via :focus-visible, not :focus-within - a mouse click leaves the
+     clicked link focused, which would otherwise hold the nav open after
+     navigating). */
   .nav {
     inset: 0 auto 0 0;
     width: 18px;
@@ -261,7 +272,7 @@ h1, h2, h3, strong { font-family: 'Avenir Next', 'Trebuchet MS', sans-serif; }
   }
 
   .nav:hover,
-  .nav:focus-within {
+  .nav:has(a:focus-visible) {
     width: 232px;
     padding: 24px 16px;
     background: var(--nav-bg-open);
@@ -273,7 +284,7 @@ h1, h2, h3, strong { font-family: 'Avenir Next', 'Trebuchet MS', sans-serif; }
   .nav-brand { display: block; height: 58px; padding: 2px 10px 0; opacity: 0; transform: translateX(-8px); transition: opacity 140ms ease, transform 200ms ease; }
 
   .nav:hover .nav-brand,
-  .nav:focus-within .nav-brand { opacity: 1; transform: translateX(0); }
+  .nav:has(a:focus-visible) .nav-brand { opacity: 1; transform: translateX(0); }
 
   .nav a {
     width: 200px;
@@ -290,7 +301,7 @@ h1, h2, h3, strong { font-family: 'Avenir Next', 'Trebuchet MS', sans-serif; }
   }
 
   .nav:hover a,
-  .nav:focus-within a { opacity: 1; pointer-events: auto; transform: translateX(0); }
+  .nav:has(a:focus-visible) a { opacity: 1; pointer-events: auto; transform: translateX(0); }
 
   .nav a svg { width: 24px; height: 24px; }
 
@@ -310,7 +321,7 @@ h1, h2, h3, strong { font-family: 'Avenir Next', 'Trebuchet MS', sans-serif; }
   }
 
   .app:has(.nav:hover) .page,
-  .app:has(.nav:focus-within) .page {
+  .app:has(.nav:has(a:focus-visible)) .page {
     width: calc(100% - 280px);
     margin-left: 264px;
     margin-right: 16px;
@@ -996,6 +1007,7 @@ a.btn {
 .dashboard-stats div:last-child { border-right: 0; }
 .dashboard-stats strong { font-size: 20px; letter-spacing: -.02em; }
 .dashboard-stats span { color: var(--muted); font-size: 12px; }
+.dashboard-pipeline { grid-template-columns: repeat(4, 1fr); }
 .dashboard-columns { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .95fr); gap: 16px; align-items: start; }
 .dashboard-left { min-width: 0; }
 .dashboard-left .dashboard-stats { margin-bottom: 24px; }
@@ -1272,4 +1284,717 @@ a.btn {
 
 @media (max-width: 520px) {
   .document-page { width: auto; }
+}
+
+/* --- Tracking (kanban) --------------------------------------------------- */
+
+/* Every grid/flex item on this page that can hold unpredictable text
+   (a job title, a note) gets an explicit `min-width: 0`. Both grid and flex
+   items default to a minimum width equal to their CONTENT's unwrapped size,
+   not their track/flex-basis size - miss this on any one of them and that
+   item (and everything alongside it) overflows its container instead of
+   shrinking or truncating. This bit us twice before this rewrite.
+
+   Responsive behaviour below is driven by @container queries against
+   .tracking-page's own width, not @media viewport queries - a page that
+   sits behind a hover-reveal sidebar (or any other layout that isn't
+   "content == viewport") can have a real width that has nothing to do with
+   the viewport, which is exactly what broke the event form earlier (it
+   reused an app-wide viewport-breakpointed class inside a ~250px column). */
+.tracking-page {
+  container-type: inline-size;
+  container-name: tracking;
+  /* A kanban board isn't reading content like every other page here - it
+     benefits from real width instead of the ~1050px reading-width cap. */
+  max-width: none;
+  width: calc(100% - 32px);
+  margin: 0 auto;
+}
+
+.tracking-header {
+  margin-bottom: 18px;
+}
+
+/* Per-stage colour, used only as a hairline accent on the column head so
+   the pipeline reads left-to-right as a progression. Wishlist sits outside
+   the pipeline so it stays neutral; Closed is the signal colour. Every column is also
+   labelled in text - colour is never the only cue. */
+.stage-wishlist { --stage: var(--muted); }
+.stage-applied { --stage: var(--stage-1); }
+.stage-interview { --stage: var(--stage-2); }
+.stage-offer { --stage: var(--good); }
+.stage-closed { --stage: var(--signal); }
+
+/* Which of a shared column's two statuses this card is in (Interview:
+   interview / online assessment; Closed: rejected / withdrawn). Both
+   options are always visible; the current one is filled. */
+.tracking-substage {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.tracking-substage button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+
+.tracking-substage button:hover {
+  color: var(--text);
+}
+
+.tracking-substage button.on {
+  background: color-mix(in srgb, var(--stage) 18%, transparent);
+  color: var(--stage);
+  cursor: default;
+}
+
+.tracking-stats {
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 16px;
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.tracking-stats div.is-warn strong {
+  color: var(--warn);
+}
+
+.tracking-stats span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracking-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.tracking-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.tracking-toolbar-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tracking-upcoming {
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  margin: 0;
+  padding: 18px;
+}
+
+.tracking-upcoming-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tracking-upcoming-item a {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.tracking-upcoming-item:first-child a {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.tracking-upcoming-item a:hover strong {
+  color: var(--accent);
+}
+
+.tracking-upcoming-item .legend-dot {
+  margin-top: 6px;
+}
+
+.tracking-upcoming-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tracking-upcoming-body strong {
+  font-size: 13px;
+  line-height: 1.3;
+  /* Wraps to 2 lines instead of forcing a single line - no fixed sidebar
+     width was ever going to fit every job title on one line. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: color .15s ease;
+}
+
+.tracking-upcoming-body .tracking-upcoming-meta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.tracking-upcoming-body small {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracking-upcoming-type {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tracking-upcoming-item.overdue .legend-dot {
+  background: var(--signal);
+}
+
+.tracking-upcoming-item.overdue .tracking-upcoming-meta {
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.tracking-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tracking-sort select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+}
+
+.tracking-sort select:focus {
+  border-color: var(--accent);
+}
+
+.tracking-sort select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.tracking-board {
+  min-width: 0;
+  /* A distinct surface from the page background, so this reads as an actual
+     board rather than columns floating loose on the page. Columns (below)
+     sit a shade lighter/darker than this on top of it. */
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.tracking-columns {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+  /* No overflow set here on purpose. Per spec, pairing overflow-x: auto
+     with overflow-y: visible doesn't keep the y-axis visible - the browser
+     coerces it to auto regardless, which clipped/cut off cards dragged
+     below the board. Columns already fit via minmax(0, 1fr), so this axis
+     needs no scrolling at this width; horizontal scroll is only added back
+     below 900px, where it's actually needed (see container query below). */
+}
+
+.tracking-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.tracking-column.over {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.tracking-column-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
+  /* The stage colour as a hairline across the top of the column. */
+  box-shadow: inset 0 3px 0 var(--stage);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.tracking-column-head > div {
+  min-width: 0;
+}
+
+.tracking-column-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.tracking-column-head h2::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stage);
+}
+
+.tracking-column-head p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracking-count {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tracking-add-job-row {
+  padding: 10px 10px 0;
+}
+
+.tracking-add-job {
+  width: 100%;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tracking-add-job:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tracking-add-job svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tracking-column-body {
+  flex: 1;
+  min-height: 120px;
+  padding: 10px;
+  transition: background-color 120ms ease;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.tracking-column.over .tracking-column-body {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.tracking-empty-hint {
+  margin: 0;
+  padding: 18px 10px;
+  border: 1px dashed transparent;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  opacity: .7;
+  transition: border-color .12s ease, color .12s ease;
+}
+
+.tracking-column.over .tracking-empty-hint {
+  border-color: var(--accent);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.tracking-card {
+  position: relative;
+  margin-bottom: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  box-shadow: none;
+  backdrop-filter: none;
+  background: var(--surface);
+  cursor: grab;
+  /* Not `none`: the TouchSensor uses a press-and-hold to start a drag, so
+     a plain swipe on a card must still scroll the board on a phone. */
+  touch-action: manipulation;
+  user-select: none;
+  /* border-color only - never transform. dnd-kit positions the card with an
+     inline transform on every pointer move, and transitioning it makes the
+     card lag behind the cursor. */
+  transition: border-color 120ms ease;
+}
+
+.tracking-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.tracking-card a,
+.tracking-card button {
+  cursor: pointer;
+}
+
+.tracking-card .job-title {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.tracking-card .job-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.tracking-card .job-title a:hover {
+  color: var(--accent);
+}
+
+.tracking-card .job-company {
+  font-size: 12px;
+}
+
+.tracking-card .job-meta {
+  margin-top: 8px;
+}
+
+.tracking-card .chip {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.tracking-card.dragging {
+  z-index: 30;
+  box-shadow: 0 12px 28px var(--page-shadow, rgba(0, 0, 0, 0.3));
+  cursor: grabbing;
+}
+
+/* Apply is the one action worth full visual weight; add-event and
+   stop-tracking are quiet, secondary, icon-only utilities off to the side -
+   not three equal-weight buttons competing for attention. */
+.tracking-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tracking-card-menu {
+  position: relative;
+  flex-shrink: 0;
+  /* Always at the right edge, whether or not an Apply link sits beside it -
+     the popover opens leftward from here, so it stays inside the card. */
+  margin-left: auto;
+}
+
+.tracking-card-menu .icon-btn {
+  width: 30px;
+  height: 30px;
+  color: var(--muted);
+}
+
+.tracking-card-menu .icon-btn:hover {
+  color: var(--accent);
+}
+
+.tracking-card-menu .icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tracking-card-menu-list {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.tracking-card-menu-list button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tracking-card-menu-list button:hover {
+  background: var(--surface-2);
+}
+
+.tracking-card-menu-list button.danger {
+  color: var(--danger);
+}
+
+.tracking-card-menu-group {
+  margin: 4px 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.tracking-card-menu-group > span {
+  display: block;
+  padding: 4px 10px 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.tracking-card-menu-group button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tracking-card-menu-group .legend-dot {
+  background: var(--stage);
+}
+
+/* The next-event chip takes its column's colour (--stage, set on the
+   column): an interview is Interview-blue, an offer deadline is Offer-teal.
+   Overdue overrides with the signal colour. */
+.chip.event {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font-weight: 600;
+  --event: var(--stage, var(--muted));
+  color: var(--event);
+  border-color: color-mix(in srgb, var(--event) 40%, transparent);
+  background: color-mix(in srgb, var(--event) 10%, transparent);
+}
+
+.chip.event .legend-dot { background: var(--event); }
+.chip.event.overdue { --event: var(--signal); }
+
+.tracking-upcoming-item .legend-dot { background: var(--stage, var(--muted)); }
+
+.chip.quiet {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  font-weight: 600;
+}
+
+.tracking-form .field {
+  margin-bottom: 10px;
+}
+
+.tracking-form .job-actions {
+  margin-top: 4px;
+}
+
+/* --- Modal -------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--backdrop);
+  backdrop-filter: blur(4px);
+}
+
+.modal-panel {
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 20px;
+  background: var(--surface-solid);
+  backdrop-filter: none;
+  box-shadow: 0 24px 60px var(--page-shadow);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.modal-panel .quick-add-job {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  background: transparent;
+}
+
+/* --- Mobile column tabs -------------------------------------------------- */
+.tracking-column-tabs {
+  display: none;
+  gap: 6px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tracking-column-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tracking-column-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tracking-column-tabs button span {
+  font-variant-numeric: tabular-nums;
+  opacity: .8;
+}
+
+.tracking-column-tabs button.on {
+  border-color: var(--stage);
+  background: color-mix(in srgb, var(--stage) 16%, transparent);
+  color: var(--text);
+}
+
+@container tracking (max-width: 900px) {
+  .tracking-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tracking-upcoming {
+    position: static;
+  }
+
+  .tracking-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tracking-stats div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .tracking-stats div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tracking-column-tabs {
+    display: flex;
+  }
+
+  .tracking-columns {
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    grid-auto-columns: minmax(78vw, 280px);
+    /* Only needed here: columns are now wider than the container, so the
+       board scrolls as a unit to swipe between them. */
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+
+  .tracking-column {
+    scroll-snap-align: start;
+  }
+
+  .tracking-column {
+    min-width: 280px;
+  }
 }

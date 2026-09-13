@@ -61,12 +61,14 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [resume, setResume] = useState(null);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
-    Promise.all([api.listJobs(), api.getActiveResume()])
-      .then(([jobList, activeResume]) => {
+    Promise.all([api.listJobs(), api.getActiveResume(), api.applicationStats()])
+      .then(([jobList, activeResume, applicationStats]) => {
         setJobs(jobList);
         setResume(activeResume);
+        setStats(applicationStats);
       })
       .catch(() => {});
   }, []);
@@ -103,6 +105,44 @@ export default function Dashboard() {
               <span>Resume</span>
             </div>
           </section>
+
+          {stats && stats.total > 0 && (
+            <>
+              <div className="dashboard-section-head">
+                <div>
+                  <h2>Application pipeline</h2>
+                  <p>Where your tracked applications stand right now.</p>
+                </div>
+                <Link className="btn" to="/tracking">
+                  Open board →
+                </Link>
+              </div>
+              <section
+                className="dashboard-stats dashboard-pipeline"
+                aria-label="Application pipeline"
+              >
+                <div>
+                  <strong>{stats.by_status.applied ?? 0}</strong>
+                  <span>Applied</span>
+                </div>
+                <div>
+                  <strong>
+                    {(stats.by_status.interview ?? 0) +
+                      (stats.by_status.online_assessment ?? 0)}
+                  </strong>
+                  <span>Interview</span>
+                </div>
+                <div>
+                  <strong>{stats.offers}</strong>
+                  <span>Offers</span>
+                </div>
+                <div>
+                  <strong>{stats.needs_follow_up}</strong>
+                  <span>Need follow-up</span>
+                </div>
+              </section>
+            </>
+          )}
 
           <div className="dashboard-section-head">
             <div>
