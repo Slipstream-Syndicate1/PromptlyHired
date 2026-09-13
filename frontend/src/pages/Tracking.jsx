@@ -208,7 +208,7 @@ function DetailsEditor({ item, onSave, onCancel }) {
   )
 }
 
-function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
+function TrackingCard({ item, column, onOpen, onRemove, onSetStatus, onMove }) {
   const { job, application } = item
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
@@ -334,6 +334,25 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
                   {application.next_action_date ? `Edit ${eventLabel(application).toLowerCase()}` : `Add ${eventLabel(application).toLowerCase()}`}
                 </button>
               )}
+              {/* The non-drag route between columns, for keyboards, screen
+                  readers and anyone who'd rather not drag. */}
+              <div className="tracking-card-menu-group" role="group" aria-label="Move to">
+                <span>Move to</span>
+                {COLUMNS.filter((c) => c.key !== column.key).map((c) => (
+                  <button
+                    key={c.key}
+                    role="menuitem"
+                    className={`stage-${c.key}`}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onMove(item, c)
+                    }}
+                  >
+                    <i className="legend-dot" aria-hidden="true" />
+                    {c.label}
+                  </button>
+                ))}
+              </div>
               <button
                 role="menuitem"
                 className="danger"
@@ -398,7 +417,7 @@ function UpcomingSidebar({ items }) {
   )
 }
 
-function Column({ column, items, sectionRef, onOpen, onRemove, onSetStatus }) {
+function Column({ column, items, sectionRef, onOpen, onRemove, onSetStatus, onMove }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.key })
 
   return (
@@ -436,6 +455,7 @@ function Column({ column, items, sectionRef, onOpen, onRemove, onSetStatus }) {
             onOpen={onOpen}
             onRemove={onRemove}
             onSetStatus={onSetStatus}
+            onMove={onMove}
           />
         ))}
       </div>
@@ -615,16 +635,20 @@ export default function Tracking() {
       if (job.is_saved) await api.unsaveJob(job.id)
     })
 
-  const onDragEnd = ({ active, over }) => {
-    if (!over) return
-    const item = items.find((i) => i.id === active.id)
-    if (!item) return
-    const target = COLUMNS.find((c) => c.key === over.id)
-    if (!target) return
+  // Moving between columns, however it's triggered - a drop or the card
+  // menu's "Move to" (the keyboard and screen-reader route).
+  const moveToColumn = (item, target) => {
     const currentKey = item.application ? columnFor(item.application.status) : 'wishlist'
     if (currentKey === target.key) return
     if (target.key === 'wishlist') moveToWishlist(item)
     else setStatus(item, target.statuses[0], { clearEvent: true })
+  }
+
+  const onDragEnd = ({ active, over }) => {
+    if (!over) return
+    const item = items.find((i) => i.id === active.id)
+    const target = COLUMNS.find((c) => c.key === over.id)
+    if (item && target) moveToColumn(item, target)
   }
 
   const saveEvent = async (item, payload) => {
@@ -756,6 +780,7 @@ export default function Tracking() {
                       onOpen={openModal}
                       onRemove={removeFromBoard}
                       onSetStatus={setStatus}
+                      onMove={moveToColumn}
                     />
                   ))}
                 </div>

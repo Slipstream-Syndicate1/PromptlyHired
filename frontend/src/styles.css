@@ -1804,6 +1804,33 @@ a.btn {
   color: var(--danger);
 }
 
+.tracking-card-menu-group {
+  margin: 4px 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.tracking-card-menu-group > span {
+  display: block;
+  padding: 4px 10px 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.tracking-card-menu-group button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tracking-card-menu-group .legend-dot {
+  background: var(--stage);
+}
+
 /* The next-event chip takes its column's colour (--stage, set on the
    column): an interview is Interview-blue, an offer deadline is Offer-teal.
    Overdue overrides with the signal colour. */
