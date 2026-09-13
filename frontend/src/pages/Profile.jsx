@@ -32,7 +32,7 @@ export default function Profile() {
   }
 
   return (
-    <main className="page">
+    <main className="page profile-page">
       <div className="page-header">
         <h1>Profile</h1>
       </div>
@@ -41,7 +41,7 @@ export default function Profile() {
       {message && <div className="alert info">{message}</div>}
 
       {/* Resume first: it is the thing the whole product is built around. */}
-      <ResumePanel resume={resume} onChange={setResume} />
+      <ResumePanel resume={resume} onChange={setResume} user={user} />
 
       <div className="card">
         <AvatarUpload user={user} onChange={setUser} />

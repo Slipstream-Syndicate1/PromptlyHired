@@ -165,6 +165,25 @@ class SkillProfileUpdate(BaseModel):
         return clean_text(v)
 
 
+class ResumeSectionContent(BaseModel):
+    heading: str = Field(default="", max_length=160)
+    bullets: list[str] = Field(default_factory=list)
+
+
+class MasterResumeContent(BaseModel):
+    """Canonical editable resume shape shared with tailored resume documents."""
+
+    full_name: str = Field(default="", max_length=160)
+    headline: str = Field(default="", max_length=240)
+    summary: str = Field(default="", max_length=4000)
+    sections: list[ResumeSectionContent] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+
+
+class MasterResumeUpdate(BaseModel):
+    master_content: MasterResumeContent
+
+
 class ResumeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -174,6 +193,7 @@ class ResumeOut(BaseModel):
     content_type: str
     is_active: bool
     uploaded_at: datetime
+    master_content: MasterResumeContent | None = None
     skill_profile: SkillProfileOut | None = None
 
 

@@ -27,11 +27,11 @@ const STYLES = `
     font: 11pt/1.45 Georgia, 'Times New Roman', serif;
     color: #111; margin: 0;
   }
-  h1 { font-size: 20pt; margin: 0 0 2mm; letter-spacing: -0.01em; }
-  .headline { font-size: 11pt; color: #444; margin: 0 0 5mm; }
+  h1 { font: 700 20pt/1.1 Arial, Helvetica, sans-serif; text-align: center; text-transform: uppercase; margin: 0 0 2mm; letter-spacing: .035em; }
+  .headline { font-size: 11pt; color: #444; text-align: center; margin: 0 0 5mm; }
   h2 {
-    font-size: 10pt; text-transform: uppercase; letter-spacing: 0.09em;
-    border-bottom: 0.6pt solid #999; padding-bottom: 1.5mm;
+    font: 700 10pt/1.3 Arial, Helvetica, sans-serif; text-transform: uppercase; letter-spacing: 0.09em;
+    border-bottom: 0.7pt solid #333; padding-bottom: 1.5mm;
     margin: 7mm 0 3mm;
   }
   p { margin: 0 0 3mm; }

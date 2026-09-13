@@ -24,6 +24,31 @@ from app.services.user_state import decorate_jobs
 router = APIRouter(prefix="/api", tags=["documents"])
 
 
+def _resume_source_text(resume) -> str:
+    """Turn the editable master resume into model input without changing its schema."""
+    master = resume.master_content
+    if not master:
+        return resume.extracted_text or ""
+
+    lines: list[str] = []
+    for key in ("full_name", "headline", "summary"):
+        value = str(master.get(key) or "").strip()
+        if value:
+            lines.append(value)
+    for section in master.get("sections") or []:
+        heading = str(section.get("heading") or "").strip()
+        if heading:
+            lines.append(f"\n{heading}")
+        for bullet in section.get("bullets") or []:
+            bullet = str(bullet).strip()
+            if bullet:
+                lines.append(f"- {bullet}")
+    skills = [str(skill).strip() for skill in master.get("skills") or [] if str(skill).strip()]
+    if skills:
+        lines.append("\nSkills: " + ", ".join(skills))
+    return "\n".join(lines).strip() or (resume.extracted_text or "")
+
+
 def _match_summary(match: JobMatch | None) -> str:
     if match is None:
         return ""
@@ -61,7 +86,7 @@ def generate_document(
     )
     try:
         result = generator(
-            resume.extracted_text or "",
+            _resume_source_text(resume),
             job.title,
             job.company.name,
             job.description or "",

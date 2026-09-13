@@ -10,7 +10,14 @@ from app.config import settings
 from app.deps import CurrentUser, DbSession
 from app.models import Resume, SkillProfile, User
 from app.rate_limit import ai_rate_limit
-from app.schemas import ResumeOut, SkillProfileOut, SkillProfileUpdate, clean_list, clean_text
+from app.schemas import (
+    MasterResumeUpdate,
+    ResumeOut,
+    SkillProfileOut,
+    SkillProfileUpdate,
+    clean_list,
+    clean_text,
+)
 from app.services import ai, resume_text
 from app.services.storage import UploadError, delete_stored_file, store_resume
 
@@ -241,3 +248,26 @@ def delete_resume(resume_id: int, user: CurrentUser, db: DbSession) -> Response:
     db.commit()
     delete_stored_file(file_url)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{resume_id}/master", response_model=ResumeOut)
+def save_master_resume(
+    resume_id: int, payload: MasterResumeUpdate, user: CurrentUser, db: DbSession
+) -> Resume:
+    """Save the user's canonical master resume.
+
+    Tailored resumes and cover letters use this structured version when it
+    exists. The uploaded file remains untouched as provenance and as a fallback.
+    """
+    resume = db.scalar(
+        select(Resume)
+        .options(selectinload(Resume.skill_profile))
+        .where(Resume.id == resume_id, Resume.user_id == user.id)
+    )
+    if resume is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found.")
+
+    resume.master_content = payload.master_content.model_dump()
+    db.commit()
+    db.refresh(resume)
+    return resume

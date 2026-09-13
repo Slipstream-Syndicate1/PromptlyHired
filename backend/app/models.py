@@ -107,6 +107,11 @@ class Resume(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text)
+    # User-edited canonical resume used as the source for tailored documents.
+    # Kept as structured JSON so the frontend editor and generated resume share
+    # the same stable shape. Older uploads may leave this null and fall back to
+    # extracted_text until the user saves a master resume.
+    master_content: Mapped[dict | None] = mapped_column(JSONB)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
