@@ -567,20 +567,20 @@ export default function Tracking() {
     }
   }
 
-  // A stage change clears the next event. The event was about the stage the
-  // card is leaving - an assessment date means nothing at Offer, a follow-up
-  // reminder is moot once there's an interview - and the label the board
-  // shows comes from the stage, so carrying the date over would quietly
-  // re-describe it. New stage, new "next".
-  const setStatus = (item, status) =>
+  // Moving to another column clears the next event: it was about the stage
+  // the card is leaving (an assessment date means nothing at Offer), and the
+  // label comes from the stage, so carrying it over would re-describe it.
+  // Switching sub-stage within a column (interview <-> online assessment)
+  // keeps it - that's a correction, not a move, and the date still stands.
+  const setStatus = (item, status, { clearEvent = false } = {}) =>
     withRollback(async () => {
       const { application, job } = item
       if (application) {
-        const cleared = { status, next_action_date: null, next_action: null }
+        const payload = clearEvent ? { status, next_action_date: null, next_action: null } : { status }
         setApplications((current) =>
-          current.map((a) => (a.id === application.id ? { ...a, ...cleared } : a)),
+          current.map((a) => (a.id === application.id ? { ...a, ...payload } : a)),
         )
-        replaceApplication(await api.updateApplication(application.id, cleared))
+        replaceApplication(await api.updateApplication(application.id, payload))
       } else {
         // Wishlist -> pipeline: the application row is created now. The
         // saved flag is left alone; Saved is the shortlist, not a stage.
@@ -624,7 +624,7 @@ export default function Tracking() {
     const currentKey = item.application ? columnFor(item.application.status) : 'wishlist'
     if (currentKey === target.key) return
     if (target.key === 'wishlist') moveToWishlist(item)
-    else setStatus(item, target.statuses[0])
+    else setStatus(item, target.statuses[0], { clearEvent: true })
   }
 
   const saveEvent = async (item, payload) => {
