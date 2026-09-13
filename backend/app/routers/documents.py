@@ -24,6 +24,49 @@ from app.services.user_state import decorate_jobs
 router = APIRouter(prefix="/api", tags=["documents"])
 
 
+def _resume_source_text(resume) -> str:
+    """Turn the editable master resume into model input without changing its schema."""
+    master = resume.master_content
+    if not master:
+        return resume.extracted_text or ""
+
+    lines: list[str] = []
+    for key in ("full_name", "headline", "contact_line", "summary"):
+        value = str(master.get(key) or "").strip()
+        if value:
+            lines.append(value)
+    for section in master.get("sections") or []:
+        heading = str(section.get("heading") or "").strip()
+        if heading:
+            lines.append(f"\n{heading}")
+        for entry in section.get("entries") or []:
+            left = " | ".join(
+                str(entry.get(key) or "").strip()
+                for key in ("title", "meta")
+                if str(entry.get(key) or "").strip()
+            )
+            right = str(entry.get("right") or "").strip()
+            if left or right:
+                lines.append(" - ".join(part for part in (left, right) if part))
+            subtitle = str(entry.get("subtitle") or "").strip()
+            subtitle_right = str(entry.get("subtitle_right") or "").strip()
+            if subtitle or subtitle_right:
+                lines.append(" - ".join(part for part in (subtitle, subtitle_right) if part))
+            for bullet in entry.get("bullets") or []:
+                bullet = str(bullet).strip()
+                if bullet:
+                    lines.append(f"- {bullet}")
+        for bullet in section.get("bullets") or []:
+            bullet = str(bullet).strip()
+            if bullet:
+                lines.append(f"- {bullet}")
+    skills = [str(skill).strip() for skill in master.get("skills") or [] if str(skill).strip()]
+    if skills:
+        lines.append("\nTechnical Skills")
+        lines.extend(skills)
+    return "\n".join(lines).strip() or (resume.extracted_text or "")
+
+
 def _match_summary(match: JobMatch | None) -> str:
     if match is None:
         return ""
@@ -61,7 +104,7 @@ def generate_document(
     )
     try:
         result = generator(
-            resume.extracted_text or "",
+            _resume_source_text(resume),
             job.title,
             job.company.name,
             job.description or "",

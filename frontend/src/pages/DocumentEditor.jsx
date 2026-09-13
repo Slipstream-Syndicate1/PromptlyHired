@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { exportDocumentPdf } from '../lib/exportPdf.js'
+import ResumePreview from '../components/ResumePreview.jsx'
 
 /**
  * Structured editor for a generated document.
@@ -171,16 +172,16 @@ export default function DocumentEditor() {
 
   if (error && !doc) {
     return (
-      <main className="page">
+      <main className="page document-page">
         <div className="alert error">{error}</div>
         <Link className="btn" to="/history">‹ History</Link>
       </main>
     )
   }
-  if (!doc || !draft) return <main className="page"><div className="empty">Loading…</div></main>
+  if (!doc || !draft) return <main className="page document-page"><div className="empty">Loading…</div></main>
 
   return (
-    <main className="page">
+    <main className="page document-page">
       <div className="page-header">
         <h1>{title}</h1>
         <Link className="count-pill" to={`/jobs/${doc.job_id}`}>
@@ -196,12 +197,27 @@ export default function DocumentEditor() {
         resume — check every claim is one you would stand behind in an interview.
       </div>
 
-      <div className="card">
-        {isResume ? (
-          <ResumeForm value={draft} patch={patch} />
-        ) : (
-          <CoverLetterForm value={draft} patch={patch} />
-        )}
+      <div className="document-workspace">
+        <div className="card document-editor-pane">
+          <div className="resume-preview-label">Editor</div>
+          {isResume ? (
+            <ResumeForm value={draft} patch={patch} />
+          ) : (
+            <CoverLetterForm value={draft} patch={patch} />
+          )}
+        </div>
+        <div className="document-preview-pane">
+          <div className="resume-preview-label">Live preview</div>
+          {isResume ? (
+            <ResumePreview value={draft} />
+          ) : (
+            <article className="resume-paper cover-letter-paper">
+              <p>{draft.greeting}</p>
+              {(draft.paragraphs || []).filter(Boolean).map((paragraph, i) => <p key={i}>{paragraph}</p>)}
+              <p>{draft.closing}</p>
+            </article>
+          )}
+        </div>
       </div>
 
       <div className="job-actions">
