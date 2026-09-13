@@ -229,6 +229,24 @@ def ai_stub(monkeypatch):
             "skills": ["Languages: Python"],
         })
 
+    def interview(resume_text, title, company, description, summary=""):
+        calls["interview"] = calls.get("interview", 0) + 1
+        return calls.get("roadmap") or {
+            "summary": f"This {title} interview will focus on Python services.",
+            "focus_areas": [{
+                "topic": "Python services",
+                "why": "The advert leads with it.",
+                "actions": ["Re-read your payments project"],
+            }],
+            "likely_questions": [{
+                "question": "Tell us about a service you owned.",
+                "how_to_answer": "Use the payments work.",
+            }],
+            "questions_to_ask": ["What does the first 90 days look like?"],
+            "watch_outs": ["No Kafka experience"],
+        }
+
+    monkeypatch.setattr(ai, "interview_roadmap", interview)
     monkeypatch.setattr(ai, "tailor_master_resume", tailor)
     monkeypatch.setattr(ai, "structure_resume", structure)
     monkeypatch.setattr(ai, "extract_skill_profile", extract)

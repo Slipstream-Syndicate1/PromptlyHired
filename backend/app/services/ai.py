@@ -177,6 +177,29 @@ class CoverLetter(BaseModel):
     closing: str
 
 
+class PrepFocus(BaseModel):
+    topic: str = Field(description="One thing to prepare, named plainly")
+    why: str = Field(description="Why this matters for this particular role")
+    actions: list[str] = Field(description="Concrete things to do before the interview")
+
+
+class PrepQuestion(BaseModel):
+    question: str = Field(description="A question this interview is likely to ask")
+    how_to_answer: str = Field(
+        description="What a strong answer covers, drawing on this candidate's own experience"
+    )
+
+
+class InterviewRoadmap(BaseModel):
+    summary: str = Field(description="Two sentences on what this interview will focus on")
+    focus_areas: list[PrepFocus]
+    likely_questions: list[PrepQuestion]
+    questions_to_ask: list[str] = Field(description="Questions for the candidate to ask them")
+    watch_outs: list[str] = Field(
+        description="Gaps in the candidate's fit to be ready to answer honestly"
+    )
+
+
 class JobExtraction(BaseModel):
     """Pulled from a fetched job page when its markup gives us nothing better."""
 
@@ -536,6 +559,37 @@ def generate_resume(
         system=system,
         prompt=_resume_and_job(resume_text, task),
         schema=TailoredResume,
+        thinking=settings.gemini_thinking_level,
+    )
+
+
+def interview_roadmap(
+    resume_text: str, job_title: str, company: str, description: str, match_summary: str = "",
+) -> InterviewRoadmap:
+    """Plan one interview: what to prepare, what they will likely ask, what to ask back."""
+    system = (
+        "You coach a candidate through preparing for one specific job interview.\n\n"
+        f"{_INJECTION_GUARD}\n\n"
+        "Everything you say must be grounded in this advert and this candidate's "
+        "real resume. Never invent experience they do not have, and never promise "
+        "or predict an outcome - you are preparing them, not forecasting a "
+        "decision. Be specific to this role: name the technologies, domains and "
+        "responsibilities the advert actually mentions, and point at the "
+        "candidate's own projects and jobs as the evidence to talk about.\n"
+        "Where the candidate is missing something the advert asks for, say so "
+        "plainly and suggest an honest way to answer it, never a way to hide it."
+    )
+    task = (
+        f"Role: {job_title}\nCompany: {company}\n\n"
+        f"{wrap_untrusted(description)}\n\n"
+        + (f"Known gaps and strengths:\n{match_summary}\n\n" if match_summary else "")
+        + "Prepare this candidate for the interview."
+    )
+    return _generate(
+        "interview-prep",
+        system=system,
+        prompt=_resume_and_job(resume_text, task),
+        schema=InterviewRoadmap,
         thinking=settings.gemini_thinking_level,
     )
 
