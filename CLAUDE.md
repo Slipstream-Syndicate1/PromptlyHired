@@ -190,7 +190,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 **Communication** (a logged exchange with the employer)
 - id, application_id (FK), kind (`email` | `call` | `meeting` | `message` | `other`), direction (`received` | `sent`), occurred_at, contact_name, subject, summary, created_at
 
-**History** is not a table — it is the query "jobs this user has generated documents for", derived from `GeneratedDocument`.
+**History** is not a table — it is the query "jobs this user has applied to or generated documents for", derived from `Application` and `GeneratedDocument`. A job applied to without generating anything is still logged; so is a job prepared for but never applied to.
 
 ---
 
@@ -199,7 +199,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 **Nav — 7 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components): **Home** (`/`), **Jobs** (`/jobs`), **Saved**, **Tracking** (`/tracking`), **History**, **Calendar** and **Profile**.
 
 - **Home** is a dashboard: a welcome hero, stats and shortcut cards. A guided onboarding tour (spotlight plus a hand-drawn arrow) runs there the first time a user signs in, and can be replayed from a button next to the light/dark theme toggle.
-- **Tracking** is the application board: a column per stage, cards dragged between them, with a non-drag "Move to" in each card's menu so it works from the keyboard. It reads and writes `/api/applications`, so the board, History, the Dashboard and the job page all show the same state. **History** stays separate: it is the record of documents generated, not of stages.
+- **Tracking** is the application board: a column per stage, cards dragged between them, with a non-drag "Move to" in each card's menu so it works from the keyboard. It reads and writes `/api/applications`, so the board, History, the Dashboard and the job page all show the same state. **History** stays separate: the board is the live workspace by stage, History is the log of what has actually been done on each job, newest first.
 - **Calendar** shows application dates. It currently stores events in the browser only, so they do not sync between devices; moving it onto `next_action_date` from `/api/applications` fixes that.
 
 The four core pages:
@@ -223,7 +223,7 @@ The four core pages:
 
 2. **Saved** — jobs the user has shortlisted. Same card, same actions.
 
-3. **History** — the record of work done: tracked applications grouped by stage with their responses, alongside every job the user has generated a resume or cover letter for, linking back to the documents.
+3. **History** — the record of work done, newest activity first: every job applied to, showing its current stage and when it was applied, and every job a resume or cover letter was generated for, linking back to the documents. A job with both shows both on one entry.
 
 4. **Profile** — name, email, profile picture, **resume upload**, and the editable SkillProfile derived from it. Account settings.
 

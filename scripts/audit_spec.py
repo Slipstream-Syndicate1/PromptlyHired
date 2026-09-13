@@ -286,6 +286,11 @@ ck("docs", "structured editor, not one textarea", "BulletList" in editor and "Re
 ck("docs", "user reviews before export", "before you use it" in editor)
 ck("docs", "reset to generated", "resetDocument" in editor)
 ck("docs", "PDF export", (FE / "src/lib/exportPdf.js").exists())
+history_router = read("backend/app/routers/documents.py")
+ck("docs", "history logs applied jobs, not just documents",
+   "Application" in history_router and "applications_out" in history_router)
+ck("docs", "history shows the stage on the entry",
+   "statusLabel" in read("frontend/src/pages/History.jsx"))
 ck("docs", "export escapes model output", "function esc(" in read("frontend/src/lib/exportPdf.js"))
 
 head("Master resume - permanent base, per-job copies")
