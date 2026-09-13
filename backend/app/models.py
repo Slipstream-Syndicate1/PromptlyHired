@@ -353,6 +353,8 @@ class Application(Base):
     # calendar show application dates from the server instead of localStorage.
     next_action: Mapped[str | None] = mapped_column(String(255))
     next_action_date: Mapped[date | None] = mapped_column(Date, index=True)
+    # interview | deadline | opens | other - see NextActionType in schemas.
+    next_action_type: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

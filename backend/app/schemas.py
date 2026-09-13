@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -309,6 +310,11 @@ def _http_url(value: str | None) -> str | None:
     return value
 
 
+# What next_action / next_action_date describe. Drives the colour of the event
+# on the tracking board; the type name is always shown in text alongside.
+NextActionType = Literal["interview", "deadline", "opens", "other"]
+
+
 class ApplicationCreate(BaseModel):
     """Track an application: either for a job already in the app (job_id), or a
     manual entry (company + position) for one applied to elsewhere."""
@@ -324,6 +330,7 @@ class ApplicationCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=10_000)
     next_action: str | None = Field(default=None, max_length=255)
     next_action_date: date | None = None
+    next_action_type: NextActionType | None = None
     resume_id: int | None = None
 
     @field_validator("company", "position", "location", "notes", "next_action")
@@ -355,6 +362,7 @@ class ApplicationUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=10_000)
     next_action: str | None = Field(default=None, max_length=255)
     next_action_date: date | None = None
+    next_action_type: NextActionType | None = None
     resume_id: int | None = None
 
     @field_validator("note", "notes", "next_action")
@@ -389,6 +397,7 @@ class ApplicationOut(BaseModel):
     notes: str | None = None
     next_action: str | None = None
     next_action_date: date | None = None
+    next_action_type: NextActionType | None = None
     resume_id: int | None = None
     created_at: datetime
     updated_at: datetime

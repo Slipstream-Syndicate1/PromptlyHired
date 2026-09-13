@@ -17,6 +17,7 @@ import Profile from "./pages/Profile.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import SavedJobs from "./pages/SavedJobs.jsx";
 import Signup from "./pages/Signup.jsx";
+import Tracking from "./pages/Tracking.jsx";
 
 function RequireAuth({ children }) {
   const { user, booting } = useAuth();
@@ -33,6 +34,7 @@ const PROTECTED = [
   ["/jobs/:jobId", JobDetail],
   ["/calendar", Calendar],
   ["/saved", SavedJobs],
+  ["/tracking", Tracking],
   ["/history", History],
   ["/documents/:documentId", DocumentEditor],
   ["/profile", Profile],
