@@ -2,9 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// The PWA foundation is here from the first commit rather than bolted on later:
-// installing to a home screen is the only route to push notifications on
-// mobile, and on iOS push requires the user to Add to Home Screen (16.4+).
+// Installable PWA: added to a home screen, the app opens full screen like a
+// regular app, and the service worker keeps the app shell available offline.
 export default defineConfig({
   plugins: [
     react(),
@@ -38,8 +37,6 @@ export default defineConfig({
         // worker - stale or cross-account data would be worse than a spinner.
         navigateFallbackDenylist: [/^\/api/, /^\/media/],
         runtimeCaching: [],
-        // Push + notification-click handling, appended to the generated worker.
-        importScripts: ['/push-sw.js'],
         cleanupOutdatedCaches: true,
       },
       devOptions: { enabled: false },
