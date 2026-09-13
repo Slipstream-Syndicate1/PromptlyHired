@@ -1667,6 +1667,37 @@ a.btn {
   margin-bottom: 8px;
 }
 
+.quick-add-job {
+  padding: 12px;
+}
+
+.quick-add-modes {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.quick-add-modes .btn {
+  flex: 1;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.quick-add-job .field {
+  margin-bottom: 8px;
+}
+
+.quick-add-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.quick-add-actions .btn.primary {
+  flex: 1;
+}
+
 .tracking-card {
   position: relative;
   margin-bottom: 8px;
@@ -1736,6 +1767,21 @@ a.btn {
   /* Always at the right edge, whether or not an Apply link sits beside it -
      the popover opens leftward from here, so it stays inside the card. */
   margin-left: auto;
+}
+
+.tracking-card-menu .icon-btn {
+  width: 30px;
+  height: 30px;
+  color: var(--muted);
+}
+
+.tracking-card-menu .icon-btn:hover {
+  color: var(--accent);
+}
+
+.tracking-card-menu .icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .tracking-card-menu-list {

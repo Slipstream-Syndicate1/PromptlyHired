@@ -9,11 +9,12 @@ it is the only free, defensible way to get a job into this app.
 from __future__ import annotations
 
 import hashlib
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
@@ -35,12 +36,34 @@ from app.services.user_state import decorate_jobs
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 SOURCE_PASTED = "pasted"
+# Entered by hand (title + company), from the tracking board or "applied
+# somewhere else": no page to fetch, no text to analyse.
+SOURCE_MANUAL = "manual"
 # Below this a "description" is a cookie banner, not a job advert.
 MIN_DESCRIPTION_CHARS = 200
 
 
 class JobFromUrl(BaseModel):
     url: str = Field(min_length=8, max_length=2048)
+
+
+class JobManual(BaseModel):
+    """Just the essentials, for the tracking board: a job the user is logging
+    rather than analysing, so no description is required. It can be filled in
+    later from the job page (or never - matching simply stays unavailable)."""
+
+    title: str = Field(min_length=1, max_length=300)
+    company: str = Field(min_length=1, max_length=200)
+    url: str | None = Field(default=None, max_length=2048)
+
+
+class JobEdit(BaseModel):
+    """Correct the essentials of a job you added. All optional; only the
+    fields sent are changed. An empty url clears the Apply link."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    company: str | None = Field(default=None, min_length=1, max_length=200)
+    url: str | None = Field(default=None, max_length=2048)
 
 
 class JobFromText(BaseModel):
@@ -215,6 +238,43 @@ def add_job_from_text(payload: JobFromText, user: CurrentUser, db: DbSession) ->
     return decorate_jobs(db, user, [job])[0]
 
 
+@router.post(
+    "/manual",
+    response_model=JobOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_job_manual(payload: JobManual, user: CurrentUser, db: DbSession) -> JobOut:
+    """Title + company (+ link): the minimum to put a job on the tracking board.
+
+    Stored as a manual entry, like an application logged from outside the app,
+    with no natural identity to deduplicate on - two users adding "Engineer at
+    Acme" by hand are not necessarily talking about the same posting.
+    """
+    url = None
+    if payload.url:
+        try:
+            url = job_url.validate_url(payload.url)
+        except job_url.JobFetchError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+
+    company = _get_or_create_company(db, clean_text(payload.company) or "")
+    job = Job(
+        company_id=company.id,
+        title=(clean_text(payload.title) or "Untitled role")[:500],
+        url=url,
+        source_api=SOURCE_MANUAL,
+        external_id=uuid.uuid4().hex,
+        source_publisher=job_url.publisher_for(url) if url else None,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    _claim(db, user, job)
+    return decorate_jobs(db, user, [job])[0]
+
+
 @router.get("", response_model=list[JobOut])
 def list_jobs(user: CurrentUser, db: DbSession) -> list[JobOut]:
     """Every job this user has added, most recent first.
@@ -324,6 +384,49 @@ def get_job(job_id: int, user: CurrentUser, db: DbSession) -> JobDetailOut:
         documents=[GeneratedDocumentOut.model_validate(d) for d in documents],
         application=application_for_job(db, user, job.id),
     )
+
+
+@router.patch("/{job_id}", response_model=JobOut)
+def edit_job(job_id: int, payload: JobEdit, user: CurrentUser, db: DbSession) -> JobOut:
+    """Fix a title, company or link on a job you added.
+
+    Job rows are shared: two people pasting the same URL get the same row. So
+    edits are only allowed while this user is the only one who has added it -
+    otherwise one person's correction would silently rewrite another's job.
+    """
+    job = _load_job(db, job_id)
+    claimants = db.scalar(select(func.count()).select_from(UserJob).where(UserJob.job_id == job.id))
+    mine = db.scalar(
+        select(UserJob.id).where(UserJob.user_id == user.id, UserJob.job_id == job.id)
+    )
+    if mine is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    if claimants > 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This job is shared with other users and can't be edited.",
+        )
+
+    data = payload.model_dump(exclude_unset=True)
+    if "title" in data:
+        job.title = (clean_text(data["title"]) or "Untitled role")[:500]
+    if "company" in data:
+        job.company_id = _get_or_create_company(db, clean_text(data["company"]) or "").id
+    if "url" in data:
+        if data["url"]:
+            try:
+                job.url = job_url.validate_url(data["url"])
+            except job_url.JobFetchError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+                ) from exc
+            job.source_publisher = job_url.publisher_for(job.url)
+        else:
+            job.url = None
+            job.source_publisher = None
+    db.commit()
+    db.refresh(job)
+    return decorate_jobs(db, user, [job])[0]
 
 
 @router.post(

@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { api } from '../api/client'
 
 /**
- * Paste a link, or paste the text - the only two ways a job enters the app.
- * Shared by the Jobs page and the Tracking board's Wishlist column, so
- * there is exactly one place this logic lives.
+ * Paste a link, or paste the text: the Jobs page's add-a-job, where the
+ * description matters because matching is built on it. The tracking board
+ * has its own lighter QuickAddJob.
  */
-export default function AddJobForm({ onAdded, compact = false }) {
+export default function AddJobForm({ onAdded }) {
   const [mode, setMode] = useState('url')
   const [url, setUrl] = useState('')
   const [text, setText] = useState('')
@@ -43,11 +43,9 @@ export default function AddJobForm({ onAdded, compact = false }) {
 
   return (
     <form className="card" onSubmit={submit}>
-      {!compact && (
-        <h2 className="section-title" style={{ marginTop: 0 }}>
-          Add a job
-        </h2>
-      )}
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        Add a job
+      </h2>
 
       <div className="job-actions" style={{ marginTop: 0, marginBottom: 12 }}>
         <button
@@ -80,19 +78,14 @@ export default function AddJobForm({ onAdded, compact = false }) {
               required
             />
           </label>
-          {!compact && (
-            <p className="fine-print">
-              Works with most company careers pages and job boards. Some sites
-              (LinkedIn and Indeed among them) block automated fetches — if that
-              happens, switch to “Paste the text”.
-            </p>
-          )}
+          <p className="fine-print">
+            Works with most company careers pages and job boards. Some sites
+            (LinkedIn and Indeed among them) block automated fetches — if that
+            happens, switch to “Paste the text”.
+          </p>
         </>
       ) : (
         <>
-          {/* Stacked rather than the app-wide .filter-grid: that switches to 2
-              columns based on viewport width, which breaks when this form is
-              reused inside a narrow container (the Wishlist column). */}
           <label className="field">
             <span>Job title</span>
             <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} />
@@ -108,7 +101,7 @@ export default function AddJobForm({ onAdded, compact = false }) {
           <label className="field">
             <span>Job description</span>
             <textarea
-              rows={compact ? 5 : 10}
+              rows={10}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Copy the whole advert and paste it here…"

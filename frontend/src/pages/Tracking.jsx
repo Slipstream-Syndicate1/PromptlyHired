@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { api } from '../api/client'
-import AddJobForm from '../components/AddJobForm.jsx'
+import QuickAddJob from '../components/QuickAddJob.jsx'
 import ApplyLink from '../components/ApplyLink.jsx'
 import { OPEN_STATUSES, statusLabel } from '../lib/applicationStatus.js'
 import { exactDateTime, relativeDay, relativeTime } from '../lib/relativeTime.js'
@@ -154,9 +154,65 @@ function EventEditor({ application, onSave, onCancel }) {
   )
 }
 
-function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent }) {
+function DetailsEditor({ item, onSave, onCancel }) {
+  const { job, application } = item
+  const [title, setTitle] = useState(job.title)
+  const [company, setCompany] = useState(job.company.name)
+  const [url, setUrl] = useState(job.url || '')
+  const [appliedDate, setAppliedDate] = useState(application?.applied_date || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (event) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await onSave(
+        { title: title.trim(), company: company.trim(), url: url.trim() },
+        application && appliedDate !== application.applied_date ? { applied_date: appliedDate } : null,
+      )
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="tracking-event-form" onSubmit={submit}>
+      {error && <div className="alert error">{error}</div>}
+      <label className="field">
+        <span>Job title</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} required />
+      </label>
+      <label className="field">
+        <span>Company</span>
+        <input value={company} onChange={(e) => setCompany(e.target.value)} maxLength={200} required />
+      </label>
+      <label className="field">
+        <span>Link (optional)</span>
+        <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+      </label>
+      {application && (
+        <label className="field">
+          <span>Applied on</span>
+          <input type="date" value={appliedDate} onChange={(e) => setAppliedDate(e.target.value)} required />
+        </label>
+      )}
+      <div className="job-actions" style={{ marginTop: 0 }}>
+        <button className="btn primary" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+        <button className="btn link" type="button" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent, onSaveDetails }) {
   const { job, application } = item
   const [editingEvent, setEditingEvent] = useState(false)
+  const [editingDetails, setEditingDetails] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id })
@@ -173,6 +229,11 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent }) {
   const saveEvent = async (payload) => {
     await onSaveEvent(item, payload)
     setEditingEvent(false)
+  }
+
+  const saveDetails = async (jobPayload, applicationPayload) => {
+    await onSaveDetails(item, jobPayload, applicationPayload)
+    setEditingDetails(false)
   }
 
   // The column's non-default status (online assessment, withdrawn) is a
@@ -234,7 +295,9 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent }) {
         )}
       </div>
 
-      {editingEvent && application ? (
+      {editingDetails ? (
+        <DetailsEditor item={item} onSave={saveDetails} onCancel={() => setEditingDetails(false)} />
+      ) : editingEvent && application ? (
         <EventEditor application={application} onSave={saveEvent} onCancel={() => setEditingEvent(false)} />
       ) : (
         <div className="tracking-card-actions">
@@ -258,6 +321,15 @@ function TrackingCard({ item, column, onRemove, onSetStatus, onSaveEvent }) {
             </button>
             {menuOpen && (
               <div className="tracking-card-menu-list" role="menu">
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setEditingDetails(true)
+                  }}
+                >
+                  Edit
+                </button>
                 {application && (
                   <button
                     role="menuitem"
@@ -364,21 +436,18 @@ function ColumnAdd({ column, onAdded }) {
 
   return (
     <div className="tracking-add-job-form">
-      <AddJobForm
-        compact
+      <QuickAddJob
         onAdded={async (job) => {
           await onAdded(job, column)
           setOpen(false)
         }}
+        onCancel={() => setOpen(false)}
       />
-      <button className="btn link" type="button" onClick={() => setOpen(false)}>
-        Cancel
-      </button>
     </div>
   )
 }
 
-function Column({ column, items, onRemove, onSetStatus, onSaveEvent, onAddJob }) {
+function Column({ column, items, onRemove, onSetStatus, onSaveEvent, onSaveDetails, onAddJob }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.key })
 
   return (
@@ -401,6 +470,7 @@ function Column({ column, items, onRemove, onSetStatus, onSaveEvent, onAddJob })
             onRemove={onRemove}
             onSetStatus={onSetStatus}
             onSaveEvent={onSaveEvent}
+            onSaveDetails={onSaveDetails}
           />
         ))}
       </div>
@@ -523,6 +593,19 @@ export default function Tracking() {
       replaceApplication(await api.updateApplication(application.id, payload))
     })
 
+  // Edits go through without an optimistic update: a job edit can be refused
+  // (the row is shared with another user) and the form shows that in place,
+  // so nothing needs rolling back. The returned job is spread into every
+  // place it appears - the jobs list and any application that wraps it.
+  const saveDetails = async (item, jobPayload, applicationPayload) => {
+    const job = await api.editJob(item.job.id, jobPayload)
+    setJobs((current) => current.map((j) => (j.id === job.id ? { ...j, ...job } : j)))
+    setApplications((current) => current.map((a) => (a.job.id === job.id ? { ...a, job } : a)))
+    if (applicationPayload) {
+      replaceApplication(await api.updateApplication(item.application.id, applicationPayload))
+    }
+  }
+
   // A job pasted directly into any column: the same add-a-job flow as the
   // Jobs page, then immediately placed in whichever column it was added
   // from - Wishlist saves it, a pipeline column creates the application
@@ -599,6 +682,7 @@ export default function Tracking() {
                       onRemove={removeFromBoard}
                       onSetStatus={setStatus}
                       onSaveEvent={saveEvent}
+                      onSaveDetails={saveDetails}
                       onAddJob={addJobToColumn}
                     />
                   ))}
