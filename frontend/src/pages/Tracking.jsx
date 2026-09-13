@@ -77,20 +77,19 @@ const SORTS = {
   },
 }
 
-const EVENT_TYPES = [
-  { value: 'interview', label: 'Interview' },
-  { value: 'deadline', label: 'Deadline' },
-  { value: 'opens', label: 'Applications open' },
-  { value: 'other', label: 'Other' },
-]
+// What an application's next event *is* follows from its stage: nobody in
+// the Interview column is scheduling anything but an interview. So the event
+// is just a date and a note, and the stage supplies the label - it moves
+// with the card. Closed applications have nothing next, so no event.
+const EVENT_LABELS = {
+  applied: 'Follow-up',
+  online_assessment: 'Assessment',
+  interview: 'Interview',
+  offer: 'Deadline',
+}
 
-// Chip colour per event type. Interview is the Interview column's blue so
-// the word means one colour on this board; there's deliberately no legend -
-// every chip carries its type in text, colour is only reinforcement.
-const EVENT_COLORS = { interview: 'blue', deadline: 'gold', opens: 'green', other: 'slate' }
-
-const eventColor = (type) => EVENT_COLORS[type] || 'slate'
-const eventLabel = (type) => EVENT_TYPES.find((t) => t.value === type)?.label || 'Event'
+const eventLabel = (application) => EVENT_LABELS[application.status] || 'Event'
+const canHaveEvent = (application) => Boolean(application && EVENT_LABELS[application.status])
 
 // next_action_date is a plain date; treat it as that day's noon so sorting
 // lines up with the calendar date, not a UTC midnight.
@@ -104,7 +103,6 @@ const localToday = () => {
 const isOverdue = (application) => application.next_action_date < localToday()
 
 function EventEditor({ application, onSave, onCancel }) {
-  const [type, setType] = useState(application.next_action_type || 'interview')
   const [date, setDate] = useState(application.next_action_date || '')
   const [note, setNote] = useState(application.next_action || '')
   const [busy, setBusy] = useState(false)
@@ -113,20 +111,12 @@ function EventEditor({ application, onSave, onCancel }) {
     event.preventDefault()
     if (!date) return
     setBusy(true)
-    await onSave({ next_action_date: date, next_action_type: type, next_action: note || null })
+    await onSave({ next_action_date: date, next_action: note || null })
     setBusy(false)
   }
 
   return (
     <form className="tracking-form" onSubmit={submit}>
-      <label className="field">
-        <span>Type</span>
-        <select value={type} onChange={(e) => setType(e.target.value)}>
-          {EVENT_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
-          ))}
-        </select>
-      </label>
       <label className="field">
         <span>Date</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -151,7 +141,7 @@ function EventEditor({ application, onSave, onCancel }) {
             disabled={busy}
             onClick={async () => {
               setBusy(true)
-              await onSave({ next_action_date: null, next_action_type: null, next_action: null })
+              await onSave({ next_action_date: null, next_action: null })
             }}
           >
             Clear
@@ -290,14 +280,14 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
         )}
         {job.match_percentage != null && <span className="chip">{job.match_percentage}% match</span>}
         {job.has_documents && <span className="chip analysed">Documents</span>}
-        {application?.next_action_date && (
+        {canHaveEvent(application) && application.next_action_date && (
           <button
-            className={`chip event event-${eventColor(application.next_action_type)}${overdue ? ' overdue' : ''}`}
+            className={`chip event${overdue ? ' overdue' : ''}`}
             onClick={() => onOpen('event', item)}
-            title={`${eventLabel(application.next_action_type)} · ${application.next_action_date}`}
+            title={`${eventLabel(application)} · ${application.next_action_date}`}
           >
             <i className="legend-dot" aria-hidden="true" />
-            {eventLabel(application.next_action_type)} {relativeDay(application.next_action_date)}
+            {eventLabel(application)} {relativeDay(application.next_action_date)}
             {application.next_action ? ` · ${application.next_action}` : ''}
           </button>
         )}
@@ -333,7 +323,7 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
               >
                 Edit
               </button>
-              {application && (
+              {canHaveEvent(application) && (
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -341,7 +331,7 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
                     onOpen('event', item)
                   }}
                 >
-                  {application.next_action_date ? 'Edit event' : 'Add event'}
+                  {application.next_action_date ? `Edit ${eventLabel(application).toLowerCase()}` : `Add ${eventLabel(application).toLowerCase()}`}
                 </button>
               )}
               <button
@@ -364,7 +354,7 @@ function TrackingCard({ item, column, onOpen, onRemove, onSetStatus }) {
 
 function UpcomingSidebar({ items }) {
   const upcoming = items
-    .filter((item) => item.application?.next_action_date)
+    .filter((item) => canHaveEvent(item.application) && item.application.next_action_date)
     .sort((a, b) => eventTime(a.application) - eventTime(b.application))
 
   return (
@@ -386,9 +376,9 @@ function UpcomingSidebar({ items }) {
           {upcoming.map(({ id, job, application }) => {
             const overdue = isOverdue(application)
             return (
-              <li key={id} className={`tracking-upcoming-item${overdue ? ' overdue' : ''}`}>
+              <li key={id} className={`tracking-upcoming-item stage-${columnFor(application.status)}${overdue ? ' overdue' : ''}`}>
                 <Link to={`/jobs/${job.id}`} title={application.next_action_date}>
-                  <i className={`legend-dot ${eventColor(application.next_action_type)}`} aria-hidden="true" />
+                  <i className="legend-dot" aria-hidden="true" />
                   <span className="tracking-upcoming-body">
                     <strong>{job.title}</strong>
                     <span className="tracking-upcoming-meta">
@@ -397,7 +387,7 @@ function UpcomingSidebar({ items }) {
                     </span>
                     {application.next_action && <small>{application.next_action}</small>}
                   </span>
-                  <span className="tracking-upcoming-type">{eventLabel(application.next_action_type)}</span>
+                  <span className="tracking-upcoming-type">{eventLabel(application)}</span>
                 </Link>
               </li>
             )
@@ -688,7 +678,7 @@ export default function Tracking() {
   const heardBack = considered - applications.filter((a) => a.status === 'applied').length
   const responseRate = considered ? Math.round((100 * heardBack) / considered) : null
   const nextUp = items
-    .filter((item) => item.application?.next_action_date)
+    .filter((item) => canHaveEvent(item.application) && item.application.next_action_date)
     .sort((a, b) => eventTime(a.application) - eventTime(b.application))[0]
   const counts = Object.fromEntries(COLUMNS.map((column) => [column.key, itemsIn(column).length]))
 
@@ -719,7 +709,7 @@ export default function Tracking() {
               <strong>{nextUp ? relativeDayCap(nextUp.application.next_action_date) : '—'}</strong>
               <span>
                 {nextUp
-                  ? `${eventLabel(nextUp.application.next_action_type)} · ${nextUp.job.company.name}`
+                  ? `${eventLabel(nextUp.application)} · ${nextUp.job.company.name}`
                   : 'Next event'}
               </span>
             </div>
@@ -785,9 +775,9 @@ export default function Tracking() {
           />
         </Modal>
       )}
-      {modal?.kind === 'event' && modal.item.application && (
+      {modal?.kind === 'event' && canHaveEvent(modal.item.application) && (
         <Modal
-          title={modal.item.application.next_action_date ? 'Edit event' : 'Add event'}
+          title={`${modal.item.application.next_action_date ? 'Edit' : 'Add'} ${eventLabel(modal.item.application).toLowerCase()}`}
           onClose={closeModal}
         >
           <EventEditor

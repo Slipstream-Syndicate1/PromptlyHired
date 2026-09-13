@@ -1804,8 +1804,9 @@ a.btn {
   color: var(--danger);
 }
 
-/* The next-event chip: same colour-by-type pills as the calendar page, so
-   an interview looks like an interview wherever it appears. */
+/* The next-event chip takes its column's colour (--stage, set on the
+   column): an interview is Interview-blue, an offer deadline is Offer-teal.
+   Overdue overrides with the signal colour. */
 .chip.event {
   display: inline-flex;
   align-items: center;
@@ -1816,18 +1817,16 @@ a.btn {
   white-space: nowrap;
   cursor: pointer;
   font-weight: 600;
-  --event: var(--muted);
+  --event: var(--stage, var(--muted));
   color: var(--event);
   border-color: color-mix(in srgb, var(--event) 40%, transparent);
   background: color-mix(in srgb, var(--event) 10%, transparent);
 }
 
 .chip.event .legend-dot { background: var(--event); }
-.chip.event.event-gold { --event: #d99a24; }
-.chip.event.event-green { --event: var(--accent); }
-.chip.event.event-blue { --event: var(--stage-2); }
-.chip.event.event-slate { --event: var(--muted); }
 .chip.event.overdue { --event: var(--signal); }
+
+.tracking-upcoming-item .legend-dot { background: var(--stage, var(--muted)); }
 
 .chip.quiet {
   color: var(--warn);

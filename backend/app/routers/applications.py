@@ -122,7 +122,6 @@ def _to_out(db, user, rows: list[Application]) -> list[ApplicationOut]:
                 notes=row.notes,
                 next_action=row.next_action,
                 next_action_date=row.next_action_date,
-                next_action_type=row.next_action_type,
                 resume_id=row.resume_id,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
@@ -242,7 +241,6 @@ def create_application(
         notes=payload.notes,
         next_action=payload.next_action,
         next_action_date=payload.next_action_date,
-        next_action_type=payload.next_action_type,
     )
     row.events.append(ApplicationEvent(from_status=None, to_status=payload.status))
     db.add(row)

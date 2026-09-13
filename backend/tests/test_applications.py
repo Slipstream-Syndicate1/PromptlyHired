@@ -180,33 +180,6 @@ def test_required_fields_cannot_be_cleared(client, auth):
     assert cleared.status_code == 200
 
 
-def test_next_action_type_round_trips_and_is_validated(client, auth):
-    headers, _, _ = auth()
-    app = _apply(client, headers, company="Hooli", position="SRE")
-    base = f"/api/applications/{app['id']}"
-    assert app["next_action_type"] is None
-
-    updated = client.patch(
-        base,
-        json={
-            "next_action": "Final round",
-            "next_action_date": "2030-01-15",
-            "next_action_type": "interview",
-        },
-        headers=headers,
-    )
-    assert updated.status_code == 200
-    assert updated.json()["next_action_type"] == "interview"
-
-    # Not one of interview | deadline | opens | other.
-    bad = client.patch(base, json={"next_action_type": "party"}, headers=headers)
-    assert bad.status_code == 422
-
-    cleared = client.patch(base, json={"next_action_type": None}, headers=headers)
-    assert cleared.status_code == 200
-    assert cleared.json()["next_action_type"] is None
-
-
 def test_filter_by_stage(client, auth):
     headers, _, _ = auth()
     _apply(client, headers, company="A", position="One")
