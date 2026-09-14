@@ -18,6 +18,12 @@ router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 @router.get("", response_model=UserOut)
 def get_profile(user: CurrentUser) -> User:
+    if not user.notification_preferences:
+        user.notification_preferences = {
+            "email_enabled": False,
+            "categories": [],
+            "reminder_offsets_hours": [24],
+        }
     return user
 
 
@@ -33,6 +39,8 @@ def update_profile(payload: UserUpdate, user: CurrentUser, db: DbSession) -> Use
         user.preferred_location = fields["preferred_location"]
     if fields.get("include_remote") is not None:
         user.include_remote = fields["include_remote"]
+    if payload.notification_preferences is not None:
+        user.notification_preferences = payload.notification_preferences.model_dump()
     db.commit()
     db.refresh(user)
     return user

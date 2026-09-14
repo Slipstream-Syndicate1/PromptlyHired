@@ -2,8 +2,22 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import ApplyLink from '../components/ApplyLink.jsx'
+import { statusLabel } from '../lib/applicationStatus.js'
 
-/** The record of work done: every job documents were generated for. */
+/**
+ * The record of work done: every job you applied to, and every job you
+ * generated a resume or cover letter for.
+ *
+ * Both come from the same rows the board and the job page use, so a job
+ * applied to without generating anything is still logged here.
+ */
+
+function formatDate(value) {
+  if (!value) return ''
+  const date = value.length === 10 ? new Date(`${value}T12:00:00`) : new Date(value)
+  return date.toLocaleDateString()
+}
+
 export default function History() {
   const [entries, setEntries] = useState([])
   const [busy, setBusy] = useState(true)
@@ -17,11 +31,15 @@ export default function History() {
       .finally(() => setBusy(false))
   }, [])
 
+  const applied = entries.filter((entry) => entry.application).length
+
   return (
     <main className="page">
       <div className="page-header">
         <h1>History</h1>
-        <span className="count-pill">{entries.length} prepared</span>
+        <span className="count-pill">
+          {entries.length} logged{applied > 0 ? ` · ${applied} applied` : ''}
+        </span>
       </div>
 
       {error && <div className="alert error">{error}</div>}
@@ -29,10 +47,10 @@ export default function History() {
 
       {!busy && entries.length === 0 && (
         <div className="empty">
-          <h2>Nothing prepared yet</h2>
+          <h2>Nothing logged yet</h2>
           <p>
-            Open a job, generate a resume or cover letter, and it will be kept here so
-            you can come back to it.
+            Mark a job as applied, or generate a resume or cover letter for one, and it
+            will be kept here.
           </p>
           <Link className="btn primary" to="/jobs">Browse jobs</Link>
         </div>
@@ -53,20 +71,34 @@ export default function History() {
           </div>
 
           <div className="job-meta">
-            <span className="chip">
-              Prepared {new Date(entry.last_generated_at).toLocaleDateString()}
-            </span>
+            {entry.application && (
+              <span className="chip met">
+                {statusLabel(entry.application.status)}
+                {entry.application.applied_date
+                  ? ` · applied ${formatDate(entry.application.applied_date)}`
+                  : ''}
+              </span>
+            )}
+            {entry.last_generated_at && (
+              <span className="chip">Prepared {formatDate(entry.last_generated_at)}</span>
+            )}
             {entry.documents.map((doc) => (
               <Link className="chip analysed" key={doc.id} to={`/documents/${doc.id}`}>
                 {doc.kind === 'resume' ? '📄 Resume' : '✉ Cover letter'}
                 {doc.edited_content ? ' (edited)' : ''}
               </Link>
             ))}
+            {entry.application?.needs_follow_up && <span className="chip">Needs follow-up</span>}
           </div>
 
           {/* Still the only route to actually applying. */}
           <div className="job-actions">
             <ApplyLink job={entry.job} variant="view" />
+            {!entry.documents.length && (
+              <Link className="btn" to={`/jobs/${entry.job.id}`}>
+                Prepare documents
+              </Link>
+            )}
           </div>
         </article>
       ))}

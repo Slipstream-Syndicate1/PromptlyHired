@@ -27,6 +27,14 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def default_notification_preferences() -> dict:
+    return {
+        "email_enabled": False,
+        "categories": [],
+        "reminder_offsets_hours": [24],
+    }
+
+
 class JobType(str, enum.Enum):
     full_time = "full_time"
     part_time = "part_time"
@@ -79,6 +87,11 @@ class User(Base):
     preferred_location: Mapped[str | None] = mapped_column(String(120))
     include_remote: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
+    )
+    notification_preferences: Mapped[dict] = mapped_column(
+        JSONB,
+        default=default_notification_preferences,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -19,6 +19,12 @@ def read(p):
     return (ROOT / p).read_text(encoding="utf-8", errors="replace")
 
 
+def read_if(p):
+    """A file that may or may not exist, for checks that follow code between files."""
+    path = ROOT / p
+    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+
+
 def ck(section, label, cond, detail=""):
     global checks
     checks += 1
@@ -62,10 +68,25 @@ head("Removed tracker domain stays removed")
 # The rest of the old tracker domain stays gone.
 for gone in ["class Follow(", "NotifiedJob", "PushSubscription", "JobPreferences"]:
     ck("removed", f"no {gone.rstrip('(')}", gone not in models)
-for path in ["backend/app/services/notifications.py", "backend/app/services/push.py",
-             "backend/app/services/reminders.py", "backend/app/services/analytics.py",
-             "frontend/src/pages/Applications.jsx", "frontend/src/pages/Analytics.jsx"]:
+for path in ["backend/app/services/push.py", "backend/app/services/reminders.py",
+             "backend/app/services/analytics.py", "frontend/src/pages/Applications.jsx",
+             "frontend/src/pages/Analytics.jsx"]:
     ck("removed", f"{path} deleted", not (ROOT / path).exists())
+
+# Reminder emails came back with application tracking, so the file is allowed
+# again - but only as reminders about the user's own tracked applications.
+notifications = read_if("backend/app/services/notifications.py")
+if notifications:
+    head("Follow-up reminders")
+    ck("reminders", "about tracked applications, not a job digest",
+       "Application" in notifications and "Follow" not in notifications)
+    ck("reminders", "driven by the application's own next action date",
+       "next_action_date" in notifications)
+    ck("reminders", "opt-in per user", "preferences" in notifications)
+    ck("reminders", "sent through the shared email service", "email" in notifications)
+    ck("reminders", "sent by a task, never during a web request",
+       "reminders" in read("backend/app/tasks.py")
+       and "notifications" not in read("backend/app/routers/applications.py"))
 
 head("Application tracking")
 TRACKING_FIELDS = {
@@ -205,12 +226,12 @@ ck("ai", "original AI output is never overwritten", "never overwritten" in docum
 ck("ai", "no auto-apply or auto-send anywhere",
    not re.search(r"auto_apply|send_application|submit_application", read("backend/app/routers/documents.py")))
 
-head("Nav - Home, Jobs, Saved, History, Calendar, Profile")
+head("Nav - Home, Jobs, Saved, Tracking, History, Calendar, Profile")
 nav = read("frontend/src/components/BottomNav.jsx")
 # Matches single- or double-quoted routes: the UI branch reformatted this file.
 routes = re.findall(r"to: .(/[a-z-]*).", nav)
 ck("nav", "core pages are in the nav", {"/jobs", "/saved", "/history", "/profile"} <= set(routes), str(routes))
-ck("nav", "at most 6 nav items", 1 <= len(routes) <= 6, str(routes))
+ck("nav", "at most 7 nav items", 1 <= len(routes) <= 7, str(routes))
 
 head("Apply link - required everywhere a job is shown")
 apply = read("frontend/src/components/ApplyLink.jsx")
@@ -250,8 +271,11 @@ ck("ssrf", "response size capped", "MAX_PAGE_BYTES" in job_url)
 head("Match percentage is presented honestly")
 match_panel = read("frontend/src/components/MatchPanel.jsx")
 ck("ui", "match panel exists", bool(match_panel))
-ck("ui", "paste UI on the main page", "addJobFromUrl" in read("frontend/src/pages/Jobs.jsx"))
-ck("ui", "text fallback offered", "addJobFromText" in read("frontend/src/pages/Jobs.jsx"))
+# The paste box may live in a component the Jobs page renders, so follow it there.
+jobs_page = read("frontend/src/pages/Jobs.jsx")
+add_job = jobs_page + read_if("frontend/src/components/AddJobForm.jsx") + read_if("frontend/src/components/QuickAddJob.jsx")
+ck("ui", "paste UI on the main page", "addJobFromUrl" in add_job)
+ck("ui", "text fallback offered", "addJobFromText" in add_job)
 ck("ui", "score never claimed as a hiring prediction", "not a prediction" in match_panel)
 ck("ui", "requirements met and missing both shown",
    "requirements_met" in match_panel and "requirements_missing" in match_panel)
@@ -262,6 +286,11 @@ ck("docs", "structured editor, not one textarea", "BulletList" in editor and "Re
 ck("docs", "user reviews before export", "before you use it" in editor)
 ck("docs", "reset to generated", "resetDocument" in editor)
 ck("docs", "PDF export", (FE / "src/lib/exportPdf.js").exists())
+history_router = read("backend/app/routers/documents.py")
+ck("docs", "history logs applied jobs, not just documents",
+   "Application" in history_router and "applications_out" in history_router)
+ck("docs", "history shows the stage on the entry",
+   "statusLabel" in read("frontend/src/pages/History.jsx"))
 ck("docs", "export escapes model output", "function esc(" in read("frontend/src/lib/exportPdf.js"))
 
 head("Master resume - permanent base, per-job copies")

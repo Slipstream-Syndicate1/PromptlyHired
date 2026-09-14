@@ -29,7 +29,7 @@ The pivot **keeps the platform and replaces the domain**. Retained wholesale:
 
 Removed in the pivot: application status tracking, funnel analytics, company Follow, email digests, follow-up reminders, web push. If any of those are wanted back, recover them from that commit rather than rewriting.
 
-**Application tracking has since been brought back**, adapted to the paste-a-link model rather than restored verbatim: stages, the status-change history and follow-up flags, plus a communications log the original never had. See "Application tracking" below. Funnel analytics, company Follow, email digests and web push remain removed.
+**Application tracking has since been brought back**, adapted to the paste-a-link model rather than restored verbatim: stages, the status-change history and follow-up flags, plus a communications log the original never had. See "Application tracking" below. **Follow-up reminder emails came back with it**, but rebuilt on tracked applications and opt-in per user, not the old company-follow digests. Funnel analytics, company Follow, digests of jobs you never applied to, and web push remain removed.
 
 ---
 
@@ -134,7 +134,7 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 ## Data model
 
 **User**
-- id, email, password_hash, name, profile_picture_url, preferred_location (nullable), include_remote (default true), created_at
+- id, email, password_hash, name, profile_picture_url, preferred_location (nullable), include_remote (default true), notification_preferences (JSONB), created_at
 - `preferred_location` and `include_remote` steer job recommendations; blank location means use the resume location.
 
 **Resume** (the uploaded source document)
@@ -190,15 +190,16 @@ The binding constraint is no longer money, it is **rate limit**. The free tier a
 **Communication** (a logged exchange with the employer)
 - id, application_id (FK), kind (`email` | `call` | `meeting` | `message` | `other`), direction (`received` | `sent`), occurred_at, contact_name, subject, summary, created_at
 
-**History** is not a table — it is the query "jobs this user has generated documents for", derived from `GeneratedDocument`.
+**History** is not a table — it is the query "jobs this user has applied to or generated documents for", derived from `Application` and `GeneratedDocument`. A job applied to without generating anything is still logged; so is a job prepared for but never applied to.
 
 ---
 
 ## Core UI structure
 
-**Nav — 6 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components): **Home** (`/`), **Jobs** (`/jobs`), **Saved**, **History**, **Calendar** and **Profile**.
+**Nav — 7 pages** (a tab bar on mobile, a sidebar at ≥768px, one set of components): **Home** (`/`), **Jobs** (`/jobs`), **Saved**, **Tracking** (`/tracking`), **History**, **Calendar** and **Profile**.
 
 - **Home** is a dashboard: a welcome hero, stats and shortcut cards. A guided onboarding tour (spotlight plus a hand-drawn arrow) runs there the first time a user signs in, and can be replayed from a button next to the light/dark theme toggle.
+- **Tracking** is the application board: a column per stage, cards dragged between them, with a non-drag "Move to" in each card's menu so it works from the keyboard. It reads and writes `/api/applications`, so the board, History, the Dashboard and the job page all show the same state. **History** stays separate: the board is the live workspace by stage, History is the log of what has actually been done on each job, newest first.
 - **Calendar** shows application dates. It currently stores events in the browser only, so they do not sync between devices; moving it onto `next_action_date` from `/api/applications` fixes that.
 
 The four core pages:
@@ -222,7 +223,7 @@ The four core pages:
 
 2. **Saved** — jobs the user has shortlisted. Same card, same actions.
 
-3. **History** — the record of work done: tracked applications grouped by stage with their responses, alongside every job the user has generated a resume or cover letter for, linking back to the documents.
+3. **History** — the record of work done, newest activity first: every job applied to, showing its current stage and when it was applied, and every job a resume or cover letter was generated for, linking back to the documents. A job with both shows both on one entry.
 
 4. **Profile** — name, email, profile picture, **resume upload**, and the editable SkillProfile derived from it. Account settings.
 
@@ -314,6 +315,14 @@ The frontend calls these through `api.*` in `frontend/src/api/client.js`. Stage 
 - **Response rate** excludes withdrawn applications, and is null rather than 0% when there is nothing to divide by.
 - **Privacy.** Another user's application or communication is a 404, never a 403, so its existence is not confirmed.
 - **No quota spent on hand-logged jobs.** They have no advert, so match analysis, document generation and interview prep refuse (422) before calling the model.
+
+### Follow-up reminders
+
+Email reminders for what is coming up on a tracked application: an interview, an offer deadline, an application deadline.
+
+- **Opt in, per user.** `notification_preferences` holds whether email is on, which categories to send, and how many hours ahead to send them. Off means nothing is sent.
+- **Driven by the application's own `next_action_date`**, so a reminder always refers to something the user actually tracked. There are no digests of jobs they never applied to; that is what the pivot removed.
+- **Sent by a scheduled task** (`python -m app.tasks reminders`) through the same SMTP service as password resets, never during a web request.
 
 ### Interview preparation
 

@@ -165,6 +165,47 @@ def test_history_covers_multiple_jobs_most_recent_first(client, with_resume, ai_
     assert history[0]["last_generated_at"] >= history[1]["last_generated_at"]
 
 
+def test_history_logs_a_job_you_applied_to_without_documents(client, with_resume, ai_stub):
+    """Applying is work done, even if nothing was generated for it."""
+    headers, _ = with_resume()
+    job = _first_job(client, headers, "Applied Only")
+    client.post("/api/applications", headers=headers, json={"job_id": job["id"], "status": "applied"})
+
+    history = client.get("/api/history", headers=headers).json()
+    assert len(history) == 1
+    entry = history[0]
+    assert entry["job"]["id"] == job["id"]
+    assert entry["documents"] == []
+    assert entry["last_generated_at"] is None
+    assert entry["application"]["status"] == "applied"
+    assert entry["last_activity_at"]
+
+
+def test_history_shows_documents_and_the_application_as_one_entry(client, with_resume, ai_stub):
+    headers, _ = with_resume()
+    job = _first_job(client, headers, "Both")
+    client.post(f"/api/jobs/{job['id']}/documents", headers=headers, json={"kind": "resume"})
+    client.post("/api/applications", headers=headers, json={"job_id": job["id"], "status": "interview"})
+
+    history = client.get("/api/history", headers=headers).json()
+    assert len(history) == 1, "one entry per job, not one per kind of work"
+    entry = history[0]
+    assert len(entry["documents"]) == 1
+    assert entry["application"]["status"] == "interview"
+    assert entry["last_generated_at"]
+
+
+def test_history_orders_by_most_recent_activity(client, with_resume, ai_stub):
+    headers, _ = with_resume()
+    older = _first_job(client, headers, "Older Role")
+    client.post(f"/api/jobs/{older['id']}/documents", headers=headers, json={"kind": "resume"})
+    newer = _first_job(client, headers, "Newer Role")
+    client.post("/api/applications", headers=headers, json={"job_id": newer["id"], "status": "applied"})
+
+    history = client.get("/api/history", headers=headers).json()
+    assert [e["job"]["id"] for e in history] == [newer["id"], older["id"]]
+
+
 def test_history_is_per_user(client, with_resume, auth, ai_stub):
     headers, _ = with_resume()
     job = _first_job(client, headers)
